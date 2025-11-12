@@ -1,33 +1,40 @@
-# Dependencias
-node_modules/
-/.pnp
-.pnp.js
-
-# Testing
-/coverage
-
-# Producción
-/build
-/dist
-
-# Archivos locales
-.DS_Store
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
 # Logs
+logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# Editor
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
+node_modules
+dist
+dist-ssr
+*.local
 
-# Sistema
-Thumbs.db
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Firebase
+.firebase/
+*-debug.log
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Firebase cache
+.firebase/
+firebase.json.bak

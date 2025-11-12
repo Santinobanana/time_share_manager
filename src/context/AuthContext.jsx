@@ -1,4 +1,10 @@
 import { createContext, useContext, useState, useEffect } from 'react';
+import { 
+  registerUser, 
+  loginUser, 
+  logoutUser, 
+  onAuthChange 
+} from '../services/authService';
 
 const AuthContext = createContext(null);
 
@@ -7,57 +13,43 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Simulación de verificación de autenticación
-    // Aquí se conectará con Firebase en la Fase 2
-    const checkAuth = async () => {
-      try {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-          setUser(JSON.parse(storedUser));
-        }
-      } catch (error) {
-        console.error('Error checking auth:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    checkAuth();
+    // Suscribirse a cambios de autenticación
+    const unsubscribe = onAuthChange((userData) => {
+      setUser(userData);
+      setLoading(false);
+    });
+
+    // Cleanup: cancelar suscripción cuando el componente se desmonte
+    return () => unsubscribe();
   }, []);
 
   const login = async (email, password) => {
-    // Simulación de login
-    // Aquí se conectará con Firebase en la Fase 2
-    const mockUser = {
-      id: '1',
-      name: 'Usuario Demo',
-      email: email,
-      isAdmin: email.includes('admin'),
-      titles: ['A-1-1', 'A-2-3'],
-      isApproved: true
-    };
-    
-    setUser(mockUser);
-    localStorage.setItem('user', JSON.stringify(mockUser));
-    return mockUser;
+    try {
+      const userData = await loginUser(email, password);
+      setUser(userData);
+      return userData;
+    } catch (error) {
+      throw error;
+    }
   };
 
   const register = async (userData) => {
-    // Simulación de registro
-    // Aquí se conectará con Firebase en la Fase 2
-    const newUser = {
-      ...userData,
-      id: Date.now().toString(),
-      isApproved: false,
-      createdAt: new Date().toISOString()
-    };
-    
-    return newUser;
+    try {
+      const newUser = await registerUser(userData);
+      // No establecemos el usuario porque necesita aprobación
+      return newUser;
+    } catch (error) {
+      throw error;
+    }
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('user');
+  const logout = async () => {
+    try {
+      await logoutUser();
+      setUser(null);
+    } catch (error) {
+      throw error;
+    }
   };
 
   const value = {
