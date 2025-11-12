@@ -1,93 +1,67 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Card from '../components/common/Card';
-import Button from '../components/common/Button';
-import Input from '../components/common/Input';
 import Modal from '../components/common/Modal';
-import { Search, Users, Calendar, Filter, Eye } from 'lucide-react';
+import { Users, Search, Filter, Calendar, RefreshCw } from 'lucide-react';
+import { getAllUsers } from '../services/userService';
+import { getUserWeeksForYear } from '../services/titleService';
 
 export default function Availability() {
   const { user } = useAuth();
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedYear, setSelectedYear] = useState(2027);
   const [filterSerie, setFilterSerie] = useState('all');
-  const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedYear, setSelectedYear] = useState(2027);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedUserWeeks, setSelectedUserWeeks] = useState([]);
 
-  // Datos simulados - En Fase 2 vendrán de Firebase
-  const years = [2027, 2028, 2029, 2030, 2031, 2032];
+  const years = [2027, 2028, 2029, 2030, 2031, 2032, 2033];
 
-  const allUsers = [
-    {
-      id: '1',
-      name: 'Alberto Retano',
-      email: 'alberto@example.com',
-      titles: ['A-1-1', 'A-1-2'],
-      weeks2027: [
-        { weekNumber: 2, dates: '11-17 Ene', title: 'A-1-1', type: 'regular' },
-        { weekNumber: null, dates: '21-28 Mar', title: 'A-1-1', type: 'special', name: 'SANTA' },
-        { weekNumber: 5, dates: '1-7 Feb', title: 'A-1-2', type: 'regular' },
-      ]
-    },
-    {
-      id: '2',
-      name: 'Mónica Martínez',
-      email: 'monica@example.com',
-      titles: ['A-2-1'],
-      weeks2027: [
-        { weekNumber: 1, dates: '3-9 Ene', title: 'A-2-1', type: 'regular' },
-        { weekNumber: 8, dates: '21-27 Feb', title: 'A-2-1', type: 'regular' },
-      ]
-    },
-    {
-      id: '3',
-      name: 'Luis Miguel Sánchez',
-      email: 'luis@example.com',
-      titles: ['A-3-1', 'B-1-1'],
-      weeks2027: [
-        { weekNumber: 9, dates: '28 Feb - 6 Mar', title: 'A-3-1', type: 'regular' },
-        { weekNumber: 1, dates: '3-9 Ene', title: 'B-1-1', type: 'regular' },
-        { weekNumber: null, dates: '10-17 Abr', title: 'B-1-1', type: 'special', name: 'PASCUA' },
-      ]
-    },
-    {
-      id: '4',
-      name: 'Carmen López',
-      email: 'carmen@example.com',
-      titles: ['B-2-3'],
-      weeks2027: [
-        { weekNumber: 10, dates: '7-13 Mar', title: 'B-2-3', type: 'regular' },
-        { weekNumber: 15, dates: '11-17 Abr', title: 'B-2-3', type: 'regular' },
-      ]
-    },
-    {
-      id: '5',
-      name: 'Roberto García',
-      email: 'roberto@example.com',
-      titles: ['C-1-1', 'C-2-2'],
-      weeks2027: [
-        { weekNumber: 3, dates: '17-23 Ene', title: 'C-1-1', type: 'regular' },
-        { weekNumber: null, dates: '20-27 Dic', title: 'C-1-1', type: 'special', name: 'NAVIDAD' },
-        { weekNumber: 12, dates: '21-27 Mar', title: 'C-2-2', type: 'regular' },
-      ]
-    },
-    {
-      id: '6',
-      name: 'Patricia Hernández',
-      email: 'patricia@example.com',
-      titles: ['D-1-1'],
-      weeks2027: [
-        { weekNumber: null, dates: '27 Dic - 2 Ene', title: 'D-1-1', type: 'special', name: 'FIN DE AÑO' },
-        { weekNumber: 4, dates: '24-30 Ene', title: 'D-1-1', type: 'regular' },
-      ]
-    },
-  ];
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+      const usersData = await getAllUsers();
+      
+      // Filtrar solo usuarios aprobados y activos con títulos
+      const activeUsers = usersData.filter(u => 
+        u.isApproved && 
+        u.isActive && 
+        u.titles && 
+        u.titles.length > 0 &&
+        u.uid !== user?.uid // Excluir al usuario actual
+      );
+      
+      setUsers(activeUsers);
+    } catch (error) {
+      console.error('Error cargando usuarios:', error);
+      alert('Error al cargar usuarios: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleViewDetails = async (selectedUser) => {
+    setSelectedUser(selectedUser);
+    setShowDetailsModal(true);
+    
+    try {
+      // Cargar semanas del usuario seleccionado
+      const weeks = await getUserWeeksForYear(selectedUser.uid, selectedYear);
+      setSelectedUserWeeks(weeks);
+    } catch (error) {
+      console.error('Error cargando semanas:', error);
+      setSelectedUserWeeks([]);
+    }
+  };
 
   // Filtrar usuarios
-  const filteredUsers = allUsers.filter(u => {
-    // Excluir al usuario actual
-    if (u.email === user?.email) return false;
-
+  const filteredUsers = users.filter(u => {
     // Filtrar por búsqueda
     if (searchTerm) {
       const search = searchTerm.toLowerCase();
@@ -106,19 +80,24 @@ export default function Availability() {
   });
 
   const getSerieColor = (title) => {
-    const serie = title.charAt(0);
+    const serie = title?.charAt(0);
     return {
       'A': 'bg-serie-a',
       'B': 'bg-serie-b',
       'C': 'bg-serie-c',
       'D': 'bg-serie-d'
-    }[serie];
+    }[serie] || 'bg-gray-200';
   };
 
-  const handleViewDetails = (userItem) => {
-    setSelectedUser(userItem);
-    setShowDetailsModal(true);
-  };
+  if (loading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex items-center justify-center h-64">
+          <RefreshCw className="animate-spin text-gray-400" size={32} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -193,7 +172,7 @@ export default function Availability() {
         <Card>
           <div className="text-center">
             <p className="text-3xl font-bold text-gray-900">
-              {allUsers.length - 1}
+              {users.length}
             </p>
             <p className="text-gray-600 mt-1">Total de usuarios</p>
           </div>
@@ -207,69 +186,39 @@ export default function Availability() {
             <Users size={64} className="mx-auto text-gray-300 mb-4" />
             <p className="text-gray-500">
               {searchTerm || filterSerie !== 'all' 
-                ? 'No se encontraron usuarios con los filtros aplicados'
-                : 'No hay usuarios disponibles'
-              }
+                ? 'No se encontraron usuarios con estos filtros'
+                : 'No hay otros usuarios con títulos asignados'}
             </p>
           </div>
         ) : (
           <div className="space-y-4">
             {filteredUsers.map((userItem) => (
               <div
-                key={userItem.id}
-                className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all"
+                key={userItem.uid}
+                className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => handleViewDetails(userItem)}
               >
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="font-semibold text-gray-900 text-lg">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
                       {userItem.name}
                     </h3>
-                    <p className="text-sm text-gray-600">{userItem.email}</p>
+                    
+                    {/* Títulos */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {userItem.titles.map((title) => (
+                        <span
+                          key={title}
+                          className={`${getSerieColor(title)} px-3 py-1 rounded-full text-sm font-medium`}
+                        >
+                          {title}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    onClick={() => handleViewDetails(userItem)}
-                    className="flex items-center gap-2"
-                  >
-                    <Eye size={16} />
-                    Ver detalles
-                  </Button>
-                </div>
 
-                {/* Títulos */}
-                <div className="mb-3">
-                  <p className="text-sm text-gray-600 mb-2">Títulos:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {userItem.titles.map((title) => (
-                      <span
-                        key={title}
-                        className={`${getSerieColor(title)} px-3 py-1 rounded-full text-sm font-medium`}
-                      >
-                        {title}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Resumen de semanas */}
-                <div>
-                  <p className="text-sm text-gray-600 mb-2">
-                    Semanas en {selectedYear}: {userItem.weeks2027.length}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {userItem.weeks2027.slice(0, 3).map((week, idx) => (
-                      <span
-                        key={idx}
-                        className="bg-gray-100 px-3 py-1 rounded-md text-xs text-gray-700"
-                      >
-                        {week.type === 'special' ? week.name : `Semana ${week.weekNumber}`}
-                      </span>
-                    ))}
-                    {userItem.weeks2027.length > 3 && (
-                      <span className="bg-gray-100 px-3 py-1 rounded-md text-xs text-gray-700">
-                        +{userItem.weeks2027.length - 3} más
-                      </span>
-                    )}
+                  <div className="text-sm text-gray-600">
+                    <p>{userItem.titles.length} título{userItem.titles.length > 1 ? 's' : ''}</p>
                   </div>
                 </div>
               </div>
@@ -281,21 +230,19 @@ export default function Availability() {
       {/* Modal de detalles */}
       <Modal
         isOpen={showDetailsModal}
-        onClose={() => setShowDetailsModal(false)}
+        onClose={() => {
+          setShowDetailsModal(false);
+          setSelectedUserWeeks([]);
+        }}
         title={`Semanas de ${selectedUser?.name}`}
-        size="lg"
       >
         {selectedUser && (
           <div className="space-y-4">
-            <div className="bg-gray-50 rounded-lg p-4">
-              <p className="text-sm text-gray-600 mb-1">Email</p>
-              <p className="font-medium">{selectedUser.email}</p>
-            </div>
-
-            <div className="bg-gray-50 rounded-lg p-4">
-              <p className="text-sm text-gray-600 mb-2">Títulos</p>
-              <div className="flex flex-wrap gap-2">
-                {selectedUser.titles.map((title) => (
+            {/* Títulos */}
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-2">Títulos</h3>
+              <div className="flex gap-2 flex-wrap">
+                {selectedUser.titles.map(title => (
                   <span
                     key={title}
                     className={`${getSerieColor(title)} px-3 py-1 rounded-full text-sm font-medium`}
@@ -306,34 +253,35 @@ export default function Availability() {
               </div>
             </div>
 
+            {/* Semanas del año seleccionado */}
             <div>
-              <h4 className="font-semibold text-gray-900 mb-3">
+              <h3 className="font-semibold text-gray-900 mb-2">
                 Semanas en {selectedYear}
-              </h4>
-              <div className="space-y-2">
-                {selectedUser.weeks2027.map((week, idx) => (
-                  <div
-                    key={idx}
-                    className={`${getSerieColor(week.title)} rounded-lg p-3`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-semibold text-gray-900">
-                          {week.type === 'special' ? `⭐ ${week.name}` : `Semana ${week.weekNumber}`}
-                        </p>
-                        <p className="text-sm text-gray-700">
-                          {week.dates} · {week.title}
-                        </p>
+              </h3>
+              
+              {selectedUserWeeks.length === 0 ? (
+                <p className="text-gray-500 text-sm">Cargando semanas...</p>
+              ) : (
+                <div className="space-y-2">
+                  {selectedUserWeeks.map((week, index) => (
+                    <div
+                      key={index}
+                      className={`${getSerieColor(week.titleId)} rounded-lg p-3`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-semibold text-gray-900">
+                            Semana {week.weekNumber}
+                          </p>
+                          <p className="text-sm text-gray-700">
+                            {week.titleId}
+                          </p>
+                        </div>
                       </div>
-                      {week.type === 'special' && (
-                        <span className="bg-white/50 px-2 py-1 rounded text-xs font-medium">
-                          Especial
-                        </span>
-                      )}
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}

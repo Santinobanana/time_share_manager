@@ -1,8 +1,19 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import Modal from '../../components/common/Modal';
+import { 
+  getAllUsers,
+  approveUser,
+  rejectUser,
+  toggleUserStatus,
+  updateUser,
+  assignTitlesToUser,
+  removeTitlesFromUser,
+  getUserStats
+} from '../../services/userService';
+import { getAvailableTitles } from '../../services/titleService';
 import { 
   Users, 
   Search, 
@@ -16,12 +27,17 @@ import {
   Clock,
   Home,
   Mail,
-  Phone
+  Phone,
+  RefreshCw
 } from 'lucide-react';
 
 export default function AdminUsers() {
+  const [users, setUsers] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [availableTitles, setAvailableTitles] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all'); // all, approved, pending, inactive
+  const [filterStatus, setFilterStatus] = useState('all');
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -29,127 +45,62 @@ export default function AdminUsers() {
     name: '',
     email: '',
     phone: '',
-    titles: [],
-    isApproved: false,
-    isActive: false
+    titles: []
   });
+  const [submitting, setSubmitting] = useState(false);
 
-  // Datos simulados - En Fase 2 vendrán de Firebase
-  const allUsers = [
-    {
-      id: '1',
-      name: 'Alberto Retano',
-      email: 'alberto@example.com',
-      phone: '+52 123 456 7890',
-      titles: ['A-1-1', 'A-1-2'],
-      isApproved: true,
-      isActive: true,
-      createdAt: '2026-01-15',
-      lastLogin: '2027-01-10'
-    },
-    {
-      id: '2',
-      name: 'Mónica Martínez',
-      email: 'monica@example.com',
-      phone: '+52 234 567 8901',
-      titles: ['A-2-1'],
-      isApproved: true,
-      isActive: true,
-      createdAt: '2026-02-20',
-      lastLogin: '2027-01-09'
-    },
-    {
-      id: '3',
-      name: 'Luis Miguel Sánchez',
-      email: 'luis@example.com',
-      phone: '+52 345 678 9012',
-      titles: ['A-3-1', 'B-1-1'],
-      isApproved: true,
-      isActive: true,
-      createdAt: '2026-03-10',
-      lastLogin: '2027-01-08'
-    },
-    {
-      id: '4',
-      name: 'Carmen López',
-      email: 'carmen@example.com',
-      phone: '',
-      titles: ['B-2-3'],
-      isApproved: false,
-      isActive: false,
-      createdAt: '2027-01-05',
-      lastLogin: null
-    },
-    {
-      id: '5',
-      name: 'Roberto García',
-      email: 'roberto@example.com',
-      phone: '+52 456 789 0123',
-      titles: ['C-1-1', 'C-2-2'],
-      isApproved: false,
-      isActive: false,
-      createdAt: '2027-01-07',
-      lastLogin: null
-    },
-    {
-      id: '6',
-      name: 'Patricia Hernández',
-      email: 'patricia@example.com',
-      phone: '+52 567 890 1234',
-      titles: ['D-1-1'],
-      isApproved: true,
-      isActive: false,
-      createdAt: '2026-06-15',
-      lastLogin: '2026-12-20'
-    },
-  ];
+  // Cargar datos iniciales
+  useEffect(() => {
+    loadData();
+  }, []);
 
-  const availableTitles = [
-    'A-1-1', 'A-1-2', 'A-1-3', 'A-1-4',
-    'A-2-1', 'A-2-2', 'A-2-3', 'A-2-4',
-    'A-3-1', 'A-3-2', 'A-3-3', 'A-3-4',
-    'B-1-1', 'B-1-2', 'B-1-3', 'B-1-4',
-    'B-2-1', 'B-2-2', 'B-2-3', 'B-2-4',
-    'C-1-1', 'C-1-2', 'C-1-3', 'C-1-4',
-    'C-2-1', 'C-2-2', 'C-2-3', 'C-2-4',
-    'D-1-1', 'D-1-2', 'D-1-3', 'D-1-4',
-  ];
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [usersData, statsData, titlesData] = await Promise.all([
+        getAllUsers(),
+        getUserStats(),
+        getAvailableTitles()
+      ]);
+      
+      setUsers(usersData);
+      setStats(statsData);
+      setAvailableTitles(titlesData);
+    } catch (error) {
+      console.error('Error cargando datos:', error);
+      alert('Error al cargar los datos: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Filtrar usuarios
-  const filteredUsers = allUsers.filter(user => {
+  const filteredUsers = users.filter(user => {
     // Filtrar por búsqueda
     if (searchTerm) {
       const search = searchTerm.toLowerCase();
       const matchesName = user.name.toLowerCase().includes(search);
       const matchesEmail = user.email.toLowerCase().includes(search);
-      const matchesTitles = user.titles.some(t => t.toLowerCase().includes(search));
+      const matchesTitles = user.titles?.some(t => t.toLowerCase().includes(search));
       if (!matchesName && !matchesEmail && !matchesTitles) return false;
     }
 
     // Filtrar por estado
-    if (filterStatus === 'approved') {
-      return user.isApproved && user.isActive;
-    } else if (filterStatus === 'pending') {
-      return !user.isApproved;
-    } else if (filterStatus === 'inactive') {
-      return !user.isActive;
-    }
+    if (filterStatus === 'pending' && user.isApproved) return false;
+    if (filterStatus === 'approved' && (!user.isApproved || !user.isActive)) return false;
+    if (filterStatus === 'inactive' && user.isActive) return false;
 
     return true;
   });
 
-  const pendingUsers = allUsers.filter(u => !u.isApproved).length;
-  const approvedUsers = allUsers.filter(u => u.isApproved && u.isActive).length;
-  const inactiveUsers = allUsers.filter(u => !u.isActive).length;
-
   const getSerieColor = (title) => {
-    const serie = title.charAt(0);
+    const serie = title?.charAt(0);
     return {
       'A': 'bg-serie-a',
       'B': 'bg-serie-b',
       'C': 'bg-serie-c',
       'D': 'bg-serie-d'
-    }[serie];
+    }[serie] || 'bg-gray-200';
   };
 
   const getStatusBadge = (user) => {
@@ -188,120 +139,191 @@ export default function AdminUsers() {
       name: user.name,
       email: user.email,
       phone: user.phone || '',
-      titles: [...user.titles],
-      isApproved: user.isApproved,
-      isActive: user.isActive
+      titles: [...(user.titles || [])]
     });
     setShowEditModal(true);
   };
 
-  const handleApproveUser = (userId) => {
-    // Simulación - En Fase 2 actualizará Firebase
-    console.log('Aprobar usuario:', userId);
-    alert('Usuario aprobado exitosamente');
-    setShowDetailsModal(false);
-  };
-
-  const handleRejectUser = (userId) => {
-    // Simulación - En Fase 2 actualizará Firebase
-    if (confirm('¿Estás seguro de rechazar este usuario? Esta acción no se puede deshacer.')) {
-      console.log('Rechazar usuario:', userId);
-      alert('Usuario rechazado');
+  const handleApproveUser = async (userId) => {
+    try {
+      setSubmitting(true);
+      await approveUser(userId);
+      alert('Usuario aprobado exitosamente');
       setShowDetailsModal(false);
+      await loadData();
+    } catch (error) {
+      console.error('Error aprobando usuario:', error);
+      alert('Error al aprobar usuario: ' + error.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleToggleActive = (userId, currentStatus) => {
-    // Simulación - En Fase 2 actualizará Firebase
+  const handleRejectUser = async (userId) => {
+    if (!confirm('¿Estás seguro de rechazar este usuario? Esta acción eliminará su cuenta.')) {
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await rejectUser(userId);
+      alert('Usuario rechazado y eliminado');
+      setShowDetailsModal(false);
+      await loadData();
+    } catch (error) {
+      console.error('Error rechazando usuario:', error);
+      alert('Error al rechazar usuario: ' + error.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleToggleActive = async (userId, currentStatus) => {
     const action = currentStatus ? 'desactivar' : 'activar';
-    if (confirm(`¿Estás seguro de ${action} este usuario?`)) {
-      console.log(`${action} usuario:`, userId);
+    if (!confirm(`¿Estás seguro de ${action} este usuario?`)) {
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await toggleUserStatus(userId, !currentStatus);
       alert(`Usuario ${action}do exitosamente`);
+      await loadData();
+    } catch (error) {
+      console.error('Error cambiando estado:', error);
+      alert('Error al cambiar estado: ' + error.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleSaveEdit = () => {
-    // Simulación - En Fase 2 actualizará Firebase
-    console.log('Actualizar usuario:', editForm);
-    alert('Usuario actualizado exitosamente');
-    setShowEditModal(false);
-  };
+  const handleSaveEdit = async () => {
+    try {
+      setSubmitting(true);
+      
+      // Actualizar información básica
+      await updateUser(selectedUser.uid, {
+        name: editForm.name,
+        phone: editForm.phone
+      });
 
-  const handleDeleteUser = (userId) => {
-    // Simulación - En Fase 2 eliminará de Firebase
-    if (confirm('¿Estás seguro de eliminar este usuario? Esta acción no se puede deshacer y eliminará todos sus datos.')) {
-      console.log('Eliminar usuario:', userId);
-      alert('Usuario eliminado');
-      setShowDetailsModal(false);
+      // Actualizar títulos si cambiaron
+      const currentTitles = selectedUser.titles || [];
+      const newTitles = editForm.titles;
+
+      // Títulos a agregar
+      const titlesToAdd = newTitles.filter(t => !currentTitles.includes(t));
+      // Títulos a remover
+      const titlesToRemove = currentTitles.filter(t => !newTitles.includes(t));
+
+      if (titlesToAdd.length > 0 || titlesToRemove.length > 0) {
+        await assignTitlesToUser(selectedUser.uid, newTitles);
+      }
+
+      alert('Usuario actualizado exitosamente');
+      setShowEditModal(false);
+      await loadData();
+    } catch (error) {
+      console.error('Error actualizando usuario:', error);
+      alert('Error al actualizar usuario: ' + error.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleTitleToggle = (title) => {
-    setEditForm({
-      ...editForm,
-      titles: editForm.titles.includes(title)
-        ? editForm.titles.filter(t => t !== title)
-        : [...editForm.titles, title]
-    });
+  const handleAddTitle = (titleId) => {
+    if (!editForm.titles.includes(titleId)) {
+      setEditForm(prev => ({
+        ...prev,
+        titles: [...prev.titles, titleId]
+      }));
+    }
   };
+
+  const handleRemoveTitle = (titleId) => {
+    setEditForm(prev => ({
+      ...prev,
+      titles: prev.titles.filter(t => t !== titleId)
+    }));
+  };
+
+  if (loading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex items-center justify-center h-64">
+          <RefreshCw className="animate-spin text-gray-400" size={32} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Gestión de Usuarios</h1>
-        <p className="text-gray-600 mt-1">
-          Administra usuarios, aprueba registros y gestiona títulos
-        </p>
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Gestión de Usuarios</h1>
+          <p className="text-gray-600 mt-1">
+            Administra usuarios, aprobaciones y asignación de títulos
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={loadData}
+          className="flex items-center gap-2"
+        >
+          <RefreshCw size={16} />
+          Actualizar
+        </Button>
       </div>
 
       {/* Estadísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <Card>
-          <div className="text-center">
-            <p className="text-3xl font-bold text-gray-900">{allUsers.length}</p>
-            <p className="text-gray-600 mt-1">Total usuarios</p>
-          </div>
-        </Card>
+      {stats && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <Card>
+            <div className="text-center">
+              <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
+              <p className="text-gray-600 mt-1">Total de usuarios</p>
+            </div>
+          </Card>
 
-        <Card>
-          <div className="text-center">
-            <p className="text-3xl font-bold text-green-600">{approvedUsers}</p>
-            <p className="text-gray-600 mt-1">Aprobados</p>
-          </div>
-        </Card>
+          <Card>
+            <div className="text-center">
+              <p className="text-3xl font-bold text-yellow-600">{stats.pending}</p>
+              <p className="text-gray-600 mt-1">Pendientes</p>
+            </div>
+          </Card>
 
-        <Card>
-          <div className="text-center">
-            <p className="text-3xl font-bold text-yellow-600">{pendingUsers}</p>
-            <p className="text-gray-600 mt-1">Pendientes</p>
-          </div>
-        </Card>
+          <Card>
+            <div className="text-center">
+              <p className="text-3xl font-bold text-green-600">{stats.approved}</p>
+              <p className="text-gray-600 mt-1">Aprobados</p>
+            </div>
+          </Card>
 
-        <Card>
-          <div className="text-center">
-            <p className="text-3xl font-bold text-gray-600">{inactiveUsers}</p>
-            <p className="text-gray-600 mt-1">Inactivos</p>
-          </div>
-        </Card>
-      </div>
+          <Card>
+            <div className="text-center">
+              <p className="text-3xl font-bold text-gray-600">{stats.inactive}</p>
+              <p className="text-gray-600 mt-1">Inactivos</p>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Filtros */}
       <Card className="mb-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Búsqueda */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input
               type="text"
-              placeholder="Buscar por nombre, email o título..."
+              placeholder="Buscar por nombre, email o título"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none"
             />
           </div>
 
-          {/* Filtro por estado */}
           <div className="flex items-center gap-2">
             <Filter size={20} className="text-gray-600" />
             <select
@@ -310,99 +332,90 @@ export default function AdminUsers() {
               className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none"
             >
               <option value="all">Todos los estados</option>
-              <option value="approved">Solo aprobados</option>
-              <option value="pending">Solo pendientes</option>
-              <option value="inactive">Solo inactivos</option>
+              <option value="pending">Pendientes de aprobación</option>
+              <option value="approved">Aprobados y activos</option>
+              <option value="inactive">Inactivos</option>
             </select>
           </div>
         </div>
       </Card>
 
       {/* Lista de usuarios */}
-      <Card title="Usuarios registrados" subtitle={`Mostrando ${filteredUsers.length} usuarios`}>
+      <Card title="Usuarios" subtitle={`Mostrando ${filteredUsers.length} de ${users.length} usuarios`}>
         {filteredUsers.length === 0 ? (
           <div className="text-center py-12">
             <Users size={64} className="mx-auto text-gray-300 mb-4" />
-            <p className="text-gray-500">
-              {searchTerm || filterStatus !== 'all' 
-                ? 'No se encontraron usuarios con los filtros aplicados'
-                : 'No hay usuarios registrados'
-              }
-            </p>
+            <p className="text-gray-500">No se encontraron usuarios</p>
           </div>
         ) : (
           <div className="space-y-4">
             {filteredUsers.map((user) => (
               <div
-                key={user.id}
-                className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all"
+                key={user.uid}
+                className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
               >
-                <div className="flex flex-col sm:flex-row items-start sm:items-start justify-between mb-3 gap-3">
-                  <div className="flex-1 min-w-0 w-full">
-                    <div className="flex items-center gap-3 mb-2 flex-wrap">
-                      <h3 className="font-semibold text-gray-900 text-lg break-words">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h3 className="text-lg font-semibold text-gray-900">
                         {user.name}
                       </h3>
                       {getStatusBadge(user)}
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-gray-600 flex items-center gap-2 break-all">
-                        <Mail size={14} className="flex-shrink-0" />
-                        {user.email}
-                      </p>
-                      {user.phone && (
-                        <p className="text-sm text-gray-600 flex items-center gap-2">
-                          <Phone size={14} className="flex-shrink-0" />
-                          {user.phone}
-                        </p>
+                      {user.isAdmin && (
+                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                          Admin
+                        </span>
                       )}
                     </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600 mb-3">
+                      <div className="flex items-center gap-2">
+                        <Mail size={14} />
+                        {user.email}
+                      </div>
+                      {user.phone && (
+                        <div className="flex items-center gap-2">
+                          <Phone size={14} />
+                          {user.phone}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Títulos */}
+                    {user.titles && user.titles.length > 0 && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Home size={14} className="text-gray-400" />
+                        {user.titles.map((title) => (
+                          <span
+                            key={title}
+                            className={`${getSerieColor(title)} px-3 py-1 rounded-full text-sm font-medium`}
+                          >
+                            {title}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  
-                  <div className="flex gap-2 w-full sm:w-auto">
+
+                  {/* Acciones */}
+                  <div className="flex gap-2 ml-4">
                     <Button
                       variant="outline"
+                      size="sm"
                       onClick={() => handleViewDetails(user)}
-                      className="text-sm flex-1 sm:flex-initial"
                     >
                       Ver detalles
                     </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => handleEditUser(user)}
-                      className="text-sm px-3"
-                    >
-                      <Edit size={16} />
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Títulos */}
-                <div className="mb-3">
-                  <p className="text-xs text-gray-600 mb-2">Títulos asignados:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {user.titles.map((title) => (
-                      <span
-                        key={title}
-                        className={`${getSerieColor(title)} px-3 py-1 rounded-full text-sm font-medium flex items-center gap-1`}
+                    {!user.isAdmin && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEditUser(user)}
                       >
-                        <Home size={14} />
-                        {title}
-                      </span>
-                    ))}
+                        <Edit size={14} />
+                      </Button>
+                    )}
                   </div>
-                </div>
-
-                {/* Info adicional */}
-                <div className="flex items-center gap-4 text-xs text-gray-500">
-                  <span>
-                    Registrado: {new Date(user.createdAt).toLocaleDateString('es-ES')}
-                  </span>
-                  {user.lastLogin && (
-                    <span>
-                      Último acceso: {new Date(user.lastLogin).toLocaleDateString('es-ES')}
-                    </span>
-                  )}
                 </div>
               </div>
             ))}
@@ -410,213 +423,182 @@ export default function AdminUsers() {
         )}
       </Card>
 
-      {/* Modal: Detalles del usuario */}
+      {/* Modal de detalles */}
       <Modal
         isOpen={showDetailsModal}
         onClose={() => setShowDetailsModal(false)}
         title="Detalles del usuario"
-        size="lg"
       >
         {selectedUser && (
-          <div className="space-y-4">
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-semibold text-lg">{selectedUser.name}</h3>
-                {getStatusBadge(selectedUser)}
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs text-gray-600">Email</p>
-                  <p className="font-medium">{selectedUser.email}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-600">Teléfono</p>
-                  <p className="font-medium">{selectedUser.phone || 'No especificado'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-600">Fecha de registro</p>
-                  <p className="font-medium">
-                    {new Date(selectedUser.createdAt).toLocaleDateString('es-ES', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-600">Último acceso</p>
-                  <p className="font-medium">
-                    {selectedUser.lastLogin 
-                      ? new Date(selectedUser.lastLogin).toLocaleDateString('es-ES', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })
-                      : 'Nunca'
-                    }
-                  </p>
-                </div>
-              </div>
-            </div>
-
+          <div className="space-y-6">
             <div>
-              <p className="text-sm font-medium text-gray-900 mb-2">Títulos asignados:</p>
-              <div className="flex flex-wrap gap-2">
-                {selectedUser.titles.map((title) => (
-                  <span
-                    key={title}
-                    className={`${getSerieColor(title)} px-4 py-2 rounded-lg font-medium flex items-center gap-2`}
-                  >
-                    <Home size={16} />
-                    {title}
-                  </span>
-                ))}
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                {selectedUser.name}
+              </h3>
+              
+              <div className="space-y-3 text-sm">
+                <div>
+                  <span className="text-gray-600">Email:</span>
+                  <span className="ml-2 font-medium">{selectedUser.email}</span>
+                </div>
+                {selectedUser.phone && (
+                  <div>
+                    <span className="text-gray-600">Teléfono:</span>
+                    <span className="ml-2 font-medium">{selectedUser.phone}</span>
+                  </div>
+                )}
+                <div>
+                  <span className="text-gray-600">Estado:</span>
+                  <span className="ml-2">{getStatusBadge(selectedUser)}</span>
+                </div>
+                <div>
+                  <span className="text-gray-600">Títulos:</span>
+                  <div className="flex gap-2 mt-2 flex-wrap">
+                    {selectedUser.titles && selectedUser.titles.length > 0 ? (
+                      selectedUser.titles.map(title => (
+                        <span
+                          key={title}
+                          className={`${getSerieColor(title)} px-3 py-1 rounded-full text-sm font-medium`}
+                        >
+                          {title}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-gray-500">Sin títulos asignados</span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="flex gap-3 pt-4 border-t">
+            {/* Acciones */}
+            <div className="flex gap-2 pt-4 border-t">
               {!selectedUser.isApproved ? (
                 <>
                   <Button
-                    variant="danger"
-                    onClick={() => handleRejectUser(selectedUser.id)}
-                    fullWidth
-                    className="flex items-center justify-center gap-2"
+                    onClick={() => handleApproveUser(selectedUser.uid)}
+                    disabled={submitting}
+                    className="flex-1 flex items-center justify-center gap-2"
                   >
-                    <XCircle size={18} />
-                    Rechazar
+                    <CheckCircle size={16} />
+                    Aprobar usuario
                   </Button>
                   <Button
-                    onClick={() => handleApproveUser(selectedUser.id)}
-                    fullWidth
-                    className="flex items-center justify-center gap-2"
+                    variant="danger"
+                    onClick={() => handleRejectUser(selectedUser.uid)}
+                    disabled={submitting}
+                    className="flex-1 flex items-center justify-center gap-2"
                   >
-                    <CheckCircle size={18} />
-                    Aprobar
+                    <XCircle size={16} />
+                    Rechazar
                   </Button>
                 </>
               ) : (
-                <>
+                !selectedUser.isAdmin && (
                   <Button
-                    variant="secondary"
-                    onClick={() => handleToggleActive(selectedUser.id, selectedUser.isActive)}
-                    fullWidth
+                    variant={selectedUser.isActive ? 'secondary' : 'primary'}
+                    onClick={() => handleToggleActive(selectedUser.uid, selectedUser.isActive)}
+                    disabled={submitting}
+                    className="flex-1"
                   >
-                    {selectedUser.isActive ? 'Desactivar' : 'Activar'}
+                    {selectedUser.isActive ? 'Desactivar' : 'Activar'} usuario
                   </Button>
-                  <Button
-                    variant="danger"
-                    onClick={() => handleDeleteUser(selectedUser.id)}
-                    fullWidth
-                    className="flex items-center justify-center gap-2"
-                  >
-                    <Trash2 size={18} />
-                    Eliminar
-                  </Button>
-                </>
+                )
               )}
             </div>
           </div>
         )}
       </Modal>
 
-      {/* Modal: Editar usuario */}
+      {/* Modal de edición */}
       <Modal
         isOpen={showEditModal}
         onClose={() => setShowEditModal(false)}
         title="Editar usuario"
-        size="lg"
       >
         {selectedUser && (
           <div className="space-y-4">
             <Input
-              label="Nombre completo"
+              label="Nombre"
               value={editForm.name}
-              onChange={(e) => setEditForm({...editForm, name: e.target.value})}
-              required
+              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
             />
 
             <Input
-              label="Correo electrónico"
-              type="email"
+              label="Email"
               value={editForm.email}
-              onChange={(e) => setEditForm({...editForm, email: e.target.value})}
-              required
+              disabled
+              className="bg-gray-100"
             />
 
             <Input
               label="Teléfono"
-              type="tel"
               value={editForm.phone}
-              onChange={(e) => setEditForm({...editForm, phone: e.target.value})}
+              onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
             />
 
+            {/* Títulos asignados */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Títulos asignados
               </label>
-              <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto p-2 border border-gray-200 rounded-lg">
-                {availableTitles.map((title) => {
-                  const serie = title.charAt(0);
-                  const colorClass = {
-                    'A': 'bg-serie-a hover:bg-green-400',
-                    'B': 'bg-serie-b hover:bg-blue-400',
-                    'C': 'bg-serie-c hover:bg-yellow-400',
-                    'D': 'bg-serie-d hover:bg-purple-400'
-                  }[serie];
-                  
-                  return (
-                    <button
+              <div className="flex gap-2 flex-wrap mb-3">
+                {editForm.titles.length > 0 ? (
+                  editForm.titles.map(title => (
+                    <span
                       key={title}
-                      type="button"
-                      onClick={() => handleTitleToggle(title)}
-                      className={`p-3 rounded-lg text-sm font-medium transition-all ${
-                        editForm.titles.includes(title)
-                          ? `${colorClass} ring-2 ring-gray-700`
-                          : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                      }`}
+                      className={`${getSerieColor(title)} px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2`}
                     >
                       {title}
-                    </button>
-                  );
-                })}
+                      <button
+                        onClick={() => handleRemoveTitle(title)}
+                        className="hover:text-red-600"
+                      >
+                        <XCircle size={14} />
+                      </button>
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-gray-500 text-sm">Sin títulos asignados</span>
+                )}
               </div>
             </div>
 
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={editForm.isApproved}
-                  onChange={(e) => setEditForm({...editForm, isApproved: e.target.checked})}
-                  className="rounded border-gray-300"
-                />
-                <span className="text-sm text-gray-700">Usuario aprobado</span>
-              </label>
+            {/* Títulos disponibles */}
+            {availableTitles.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Agregar títulos disponibles
+                </label>
+                <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-2">
+                  <div className="grid grid-cols-4 gap-2">
+                    {availableTitles.map(title => (
+                      <button
+                        key={title.id}
+                        onClick={() => handleAddTitle(title.id)}
+                        disabled={editForm.titles.includes(title.id)}
+                        className={`${getSerieColor(title.serie)} px-2 py-1 rounded text-sm font-medium hover:opacity-80 disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        {title.id}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={editForm.isActive}
-                  onChange={(e) => setEditForm({...editForm, isActive: e.target.checked})}
-                  className="rounded border-gray-300"
-                />
-                <span className="text-sm text-gray-700">Cuenta activa</span>
-              </label>
-            </div>
-
-            <div className="flex gap-3 pt-4">
+            <div className="flex gap-2 pt-4">
               <Button
                 variant="secondary"
                 onClick={() => setShowEditModal(false)}
-                fullWidth
+                className="flex-1"
               >
                 Cancelar
               </Button>
               <Button
                 onClick={handleSaveEdit}
-                fullWidth
+                disabled={submitting}
+                className="flex-1"
               >
                 Guardar cambios
               </Button>

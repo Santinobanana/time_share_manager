@@ -1,18 +1,23 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Input from '../components/common/Input';
 import Modal from '../components/common/Modal';
 import { User, Mail, Phone, Key, Calendar, Home, Edit, Save, X } from 'lucide-react';
+import { updateUser } from '../services/userService';
+import { getTitlesByUser } from '../services/titleService';
+import { updatePassword } from 'firebase/auth';
+import { auth } from '../config/firebase';
 
 export default function Profile() {
   const { user } = useAuth();
+  const [userTitles, setUserTitles] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [editForm, setEditForm] = useState({
     name: user?.name || '',
-    email: user?.email || '',
     phone: user?.phone || ''
   });
   const [passwordForm, setPasswordForm] = useState({
@@ -22,31 +27,40 @@ export default function Profile() {
   });
   const [errors, setErrors] = useState({});
 
-  // Datos simulados - En Fase 2 vendrán de Firebase
-  const userTitles = user?.titles || ['A-1-1', 'A-2-3'];
-  const accountInfo = {
-    createdAt: '2026-01-15',
-    lastLogin: '2027-01-10',
-    totalWeeks: 6,
-    exchangesCompleted: 2
+  useEffect(() => {
+    if (user) {
+      loadUserTitles();
+    }
+  }, [user]);
+
+  const loadUserTitles = async () => {
+    try {
+      if (!user.titles || user.titles.length === 0) {
+        setUserTitles([]);
+        return;
+      }
+      const titles = await getTitlesByUser(user.uid);
+      setUserTitles(titles);
+    } catch (error) {
+      console.error('Error cargando títulos:', error);
+    }
   };
 
   const getSerieColor = (title) => {
-    const serie = title.charAt(0);
+    const serie = title?.charAt(0) || title?.serie;
     return {
       'A': 'bg-serie-a',
       'B': 'bg-serie-b',
       'C': 'bg-serie-c',
       'D': 'bg-serie-d'
-    }[serie];
+    }[serie] || 'bg-gray-200';
   };
 
   const handleEditToggle = () => {
     if (isEditing) {
-      // Cancelar edición - restaurar valores originales
+      // Cancelar edición
       setEditForm({
         name: user?.name || '',
-        email: user?.email || '',
         phone: user?.phone || ''
       });
       setErrors({});
@@ -54,18 +68,12 @@ export default function Profile() {
     setIsEditing(!isEditing);
   };
 
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
     // Validaciones
     const newErrors = {};
     
     if (!editForm.name.trim()) {
       newErrors.name = 'El nombre es requerido';
-    }
-    
-    if (!editForm.email.trim()) {
-      newErrors.email = 'El email es requerido';
-    } else if (!/\S+@\S+\.\S+/.test(editForm.email)) {
-      newErrors.email = 'Email inválido';
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -73,14 +81,28 @@ export default function Profile() {
       return;
     }
 
-    // Simulación - En Fase 2 actualizará Firebase
-    console.log('Actualizar perfil:', editForm);
-    alert('Perfil actualizado exitosamente');
-    setIsEditing(false);
-    setErrors({});
+    try {
+      setLoading(true);
+      await updateUser(user.uid, {
+        name: editForm.name,
+        phone: editForm.phone
+      });
+      
+      alert('Perfil actualizado exitosamente');
+      setIsEditing(false);
+      setErrors({});
+      
+      // Recargar la página para actualizar el contexto
+      window.location.reload();
+    } catch (error) {
+      console.error('Error actualizando perfil:', error);
+      alert('Error al actualizar perfil: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleChangePassword = () => {
+  const handleChangePassword = async () => {
     // Validaciones
     const newErrors = {};
     
@@ -103,12 +125,32 @@ export default function Profile() {
       return;
     }
 
-    // Simulación - En Fase 2 actualizará Firebase
-    console.log('Cambiar contraseña');
-    alert('Contraseña actualizada exitosamente');
-    setShowPasswordModal(false);
-    setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-    setErrors({});
+    try {
+      setLoading(true);
+      
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        throw new Error('No hay usuario autenticado');
+      }
+
+      await updatePassword(currentUser, passwordForm.newPassword);
+      
+      alert('Contraseña actualizada exitosamente');
+      setShowPasswordModal(false);
+      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setErrors({});
+    } catch (error) {
+      console.error('Error cambiando contraseña:', error);
+      
+      let errorMessage = 'Error al cambiar la contraseña';
+      if (error.code === 'auth/requires-recent-login') {
+        errorMessage = 'Por seguridad, debes cerrar sesión y volver a iniciar para cambiar tu contraseña';
+      }
+      
+      alert(errorMessage);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -151,6 +193,7 @@ export default function Profile() {
                   </Button>
                   <Button
                     onClick={handleSaveProfile}
+                    disabled={loading}
                     className="flex items-center gap-2"
                   >
                     <Save size={16} />
@@ -165,52 +208,42 @@ export default function Profile() {
                 <>
                   <Input
                     label="Nombre completo"
-                    name="name"
                     value={editForm.name}
-                    onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                     error={errors.name}
-                    required
+                    icon={User}
                   />
-                  <Input
-                    label="Correo electrónico"
-                    type="email"
-                    name="email"
-                    value={editForm.email}
-                    onChange={(e) => setEditForm({...editForm, email: e.target.value})}
-                    error={errors.email}
-                    required
-                  />
+
                   <Input
                     label="Teléfono"
-                    type="tel"
-                    name="phone"
                     value={editForm.phone}
-                    onChange={(e) => setEditForm({...editForm, phone: e.target.value})}
+                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
                     placeholder="+52 123 456 7890"
+                    icon={Phone}
                   />
                 </>
               ) : (
                 <>
                   <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                    <User size={20} className="text-gray-600" />
+                    <User className="text-gray-400" size={20} />
                     <div>
-                      <p className="text-xs text-gray-600">Nombre</p>
+                      <p className="text-sm text-gray-600">Nombre</p>
                       <p className="font-medium text-gray-900">{user?.name}</p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                    <Mail size={20} className="text-gray-600" />
+                    <Mail className="text-gray-400" size={20} />
                     <div>
-                      <p className="text-xs text-gray-600">Correo electrónico</p>
+                      <p className="text-sm text-gray-600">Email</p>
                       <p className="font-medium text-gray-900">{user?.email}</p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                    <Phone size={20} className="text-gray-600" />
+                    <Phone className="text-gray-400" size={20} />
                     <div>
-                      <p className="text-xs text-gray-600">Teléfono</p>
+                      <p className="text-sm text-gray-600">Teléfono</p>
                       <p className="font-medium text-gray-900">
                         {user?.phone || 'No especificado'}
                       </p>
@@ -223,142 +256,79 @@ export default function Profile() {
 
           {/* Seguridad */}
           <Card>
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900">Seguridad</h2>
-                <p className="text-sm text-gray-600 mt-1">
-                  Gestiona tu contraseña y configuración de seguridad
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                <Key size={20} className="text-gray-600" />
-                <div className="flex-1">
-                  <p className="text-xs text-gray-600">Contraseña</p>
-                  <p className="font-medium text-gray-900">••••••••</p>
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowPasswordModal(true)}
-                >
-                  Cambiar
-                </Button>
-              </div>
-            </div>
-          </Card>
-
-          {/* Mis títulos */}
-          <Card>
             <h2 className="text-xl font-semibold text-gray-900 mb-4">
-              Mis Títulos
+              Seguridad
             </h2>
-            <div className="flex flex-wrap gap-3">
-              {userTitles.map((title) => (
-                <div
-                  key={title}
-                  className={`${getSerieColor(title)} px-6 py-3 rounded-lg font-semibold text-lg flex items-center gap-2`}
-                >
-                  <Home size={20} />
-                  {title}
+            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-3">
+                <Key className="text-gray-400" size={20} />
+                <div>
+                  <p className="font-medium text-gray-900">Contraseña</p>
+                  <p className="text-sm text-gray-600">••••••••</p>
                 </div>
-              ))}
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => setShowPasswordModal(true)}
+              >
+                Cambiar
+              </Button>
             </div>
-            <p className="text-sm text-gray-600 mt-4">
-              Total de títulos: {userTitles.length}
-            </p>
           </Card>
         </div>
 
-        {/* Columna derecha - Estadísticas */}
+        {/* Columna derecha - Títulos y estadísticas */}
         <div className="space-y-6">
-          {/* Estado de cuenta */}
+          {/* Mis títulos */}
           <Card>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              Estado de Cuenta
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Home size={20} />
+              Mis Títulos
             </h2>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between py-2 border-b border-gray-200">
-                <span className="text-sm text-gray-600">Estado</span>
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                  Activa
-                </span>
+            {userTitles.length === 0 ? (
+              <p className="text-gray-500 text-sm">Sin títulos asignados</p>
+            ) : (
+              <div className="space-y-2">
+                {userTitles.map((title) => (
+                  <div
+                    key={title.id}
+                    className={`${getSerieColor(title.serie)} rounded-lg p-3`}
+                  >
+                    <p className="font-bold text-gray-900">{title.id}</p>
+                    <p className="text-sm text-gray-700">
+                      Serie {title.serie} - Subserie {title.subserie}
+                    </p>
+                  </div>
+                ))}
               </div>
-              <div className="flex items-center justify-between py-2 border-b border-gray-200">
-                <span className="text-sm text-gray-600">Tipo</span>
-                <span className="text-sm font-medium text-gray-900">
-                  {user?.isAdmin ? 'Administrador' : 'Usuario'}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-2">
-                <span className="text-sm text-gray-600">Miembro desde</span>
-                <span className="text-sm font-medium text-gray-900">
-                  {new Date(accountInfo.createdAt).toLocaleDateString('es-ES', {
-                    year: 'numeric',
-                    month: 'long'
-                  })}
-                </span>
-              </div>
-            </div>
+            )}
           </Card>
 
           {/* Estadísticas */}
           <Card>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Calendar size={20} />
               Estadísticas
             </h2>
-            <div className="space-y-4">
-              <div className="text-center p-4 bg-gray-50 rounded-lg">
-                <p className="text-3xl font-bold text-gray-900">
-                  {accountInfo.totalWeeks}
-                </p>
-                <p className="text-sm text-gray-600 mt-1">
-                  Semanas este año
-                </p>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-600">Títulos</span>
+                <span className="font-bold text-gray-900">{userTitles.length}</span>
               </div>
-              
-              <div className="text-center p-4 bg-gray-50 rounded-lg">
-                <p className="text-3xl font-bold text-gray-900">
-                  {accountInfo.exchangesCompleted}
-                </p>
-                <p className="text-sm text-gray-600 mt-1">
-                  Intercambios realizados
-                </p>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-600">Semanas 2027</span>
+                <span className="font-bold text-gray-900">{userTitles.length}</span>
               </div>
-              
-              <div className="p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-2 mb-1">
-                  <Calendar size={16} className="text-gray-600" />
-                  <p className="text-xs text-gray-600">Último acceso</p>
-                </div>
-                <p className="text-sm font-medium text-gray-900">
-                  {new Date(accountInfo.lastLogin).toLocaleDateString('es-ES', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </p>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-600">Intercambios</span>
+                <span className="font-bold text-gray-900">0</span>
               </div>
             </div>
-          </Card>
-
-          {/* Ayuda */}
-          <Card>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              ¿Necesitas ayuda?
-            </h2>
-            <p className="text-sm text-gray-600 mb-4">
-              Si tienes problemas con tu cuenta o necesitas asistencia, contacta al administrador.
-            </p>
-            <Button variant="outline" fullWidth>
-              Contactar soporte
-            </Button>
           </Card>
         </div>
       </div>
 
-      {/* Modal: Cambiar contraseña */}
+      {/* Modal cambio de contraseña */}
       <Modal
         isOpen={showPasswordModal}
         onClose={() => {
@@ -370,53 +340,41 @@ export default function Profile() {
       >
         <div className="space-y-4">
           <Input
+            type="password"
             label="Contraseña actual"
-            type="password"
             value={passwordForm.currentPassword}
-            onChange={(e) => setPasswordForm({...passwordForm, currentPassword: e.target.value})}
+            onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
             error={errors.currentPassword}
-            required
           />
-          
+
           <Input
+            type="password"
             label="Nueva contraseña"
-            type="password"
             value={passwordForm.newPassword}
-            onChange={(e) => setPasswordForm({...passwordForm, newPassword: e.target.value})}
+            onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
             error={errors.newPassword}
-            required
           />
-          
+
           <Input
-            label="Confirmar nueva contraseña"
             type="password"
+            label="Confirmar nueva contraseña"
             value={passwordForm.confirmPassword}
-            onChange={(e) => setPasswordForm({...passwordForm, confirmPassword: e.target.value})}
+            onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
             error={errors.confirmPassword}
-            required
           />
 
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-            <p className="text-sm text-yellow-800">
-              <strong>Nota:</strong> Asegúrate de recordar tu nueva contraseña. Se cerrará tu sesión después del cambio.
-            </p>
-          </div>
-
-          <div className="flex gap-3 pt-4">
+          <div className="flex gap-2 pt-4">
             <Button
               variant="secondary"
-              onClick={() => {
-                setShowPasswordModal(false);
-                setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-                setErrors({});
-              }}
-              fullWidth
+              onClick={() => setShowPasswordModal(false)}
+              className="flex-1"
             >
               Cancelar
             </Button>
             <Button
               onClick={handleChangePassword}
-              fullWidth
+              disabled={loading}
+              className="flex-1"
             >
               Cambiar contraseña
             </Button>
