@@ -1,156 +1,230 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Modal from '../components/common/Modal';
 import Input from '../components/common/Input';
-import { ArrowLeftRight, Plus, Clock, CheckCircle, XCircle, History, Send, Inbox } from 'lucide-react';
+import { 
+  ArrowLeftRight, 
+  CheckCircle, 
+  XCircle, 
+  Clock, 
+  Send,
+  Calendar,
+  User,
+  RefreshCw,
+  MessageSquare
+} from 'lucide-react';
+import {
+  getUserExchanges,
+  getPendingExchanges,
+  createExchange,
+  acceptExchange,
+  rejectExchange,
+  cancelExchange,
+  getExchangeStats,
+  checkDuplicateExchange
+} from '../services/exchangeService';
+import { getUserWeeksForYear } from '../services/titleService';
+import { getAllUsers } from '../services/userService';
 
 export default function Exchanges() {
   const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [sentExchanges, setSentExchanges] = useState([]);
+  const [receivedExchanges, setReceivedExchanges] = useState([]);
+  const [stats, setStats] = useState(null);
   const [activeTab, setActiveTab] = useState('received'); // received, sent, history
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedExchange, setSelectedExchange] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
   
-  // Form para crear intercambio
+  // Estados para crear intercambio
+  const [myWeeks, setMyWeeks] = useState([]);
+  const [otherUsers, setOtherUsers] = useState([]);
+  const [selectedUser, setSelectedUser] = useState('');
+  const [selectedUserWeeks, setSelectedUserWeeks] = useState([]);
   const [createForm, setCreateForm] = useState({
     myWeek: '',
-    targetUser: '',
     targetWeek: '',
     message: ''
   });
 
-  // Datos simulados - En Fase 2 vendrán de Firebase
-  const myWeeks2027 = [
-    { id: 'w1', weekNumber: 2, dates: '11-17 Ene', title: 'A-1-1', type: 'regular' },
-    { id: 'w2', weekNumber: 5, dates: '1-7 Feb', title: 'A-2-3', type: 'regular' },
-    { id: 'w3', weekNumber: null, dates: '21-28 Mar', title: 'A-1-1', type: 'special', name: 'SANTA' },
-  ];
+  const currentYear = 2027;
 
-  const otherUsers = [
-    { id: '1', name: 'Alberto Retano', email: 'alberto@example.com' },
-    { id: '2', name: 'Mónica Martínez', email: 'monica@example.com' },
-    { id: '3', name: 'Luis Miguel Sánchez', email: 'luis@example.com' },
-  ];
+  useEffect(() => {
+    if (user) {
+      loadData();
+    }
+  }, [user]);
 
-  const receivedExchanges = [
-    {
-      id: 'ex1',
-      from: { id: '1', name: 'Alberto Retano', email: 'alberto@example.com' },
-      fromWeek: { weekNumber: 2, dates: '11-17 Ene', title: 'A-1-1' },
-      toWeek: { weekNumber: 5, dates: '1-7 Feb', title: 'A-2-3' },
-      status: 'pending',
-      message: 'Me gustaría intercambiar esta semana, ¿te parece bien?',
-      createdAt: '2027-01-05',
-      year: 2027
-    },
-    {
-      id: 'ex2',
-      from: { id: '2', name: 'Mónica Martínez', email: 'monica@example.com' },
-      fromWeek: { weekNumber: 1, dates: '3-9 Ene', title: 'A-2-1' },
-      toWeek: { weekNumber: 2, dates: '11-17 Ene', title: 'A-1-1' },
-      status: 'pending',
-      message: 'Hola, necesito esa semana por motivos familiares.',
-      createdAt: '2027-01-03',
-      year: 2027
-    },
-  ];
-
-  const sentExchanges = [
-    {
-      id: 'ex3',
-      to: { id: '3', name: 'Luis Miguel Sánchez', email: 'luis@example.com' },
-      fromWeek: { weekNumber: 5, dates: '1-7 Feb', title: 'A-2-3' },
-      toWeek: { weekNumber: 9, dates: '28 Feb - 6 Mar', title: 'A-3-1' },
-      status: 'pending',
-      message: 'Me interesa tu semana, ¿podemos intercambiar?',
-      createdAt: '2027-01-04',
-      year: 2027
-    },
-  ];
-
-  const historyExchanges = [
-    {
-      id: 'ex4',
-      with: { id: '1', name: 'Alberto Retano', email: 'alberto@example.com' },
-      fromWeek: { weekNumber: 8, dates: '22-28 Feb', title: 'A-1-1' },
-      toWeek: { weekNumber: 10, dates: '8-14 Mar', title: 'A-1-2' },
-      status: 'accepted',
-      resolvedAt: '2026-12-15',
-      year: 2026
-    },
-    {
-      id: 'ex5',
-      with: { id: '2', name: 'Mónica Martínez', email: 'monica@example.com' },
-      fromWeek: { weekNumber: 15, dates: '10-16 Abr', title: 'A-2-3' },
-      toWeek: { weekNumber: 12, dates: '22-28 Mar', title: 'A-2-1' },
-      status: 'rejected',
-      resolvedAt: '2026-11-20',
-      year: 2026
-    },
-  ];
-
-  const getSerieColor = (title) => {
-    const serie = title.charAt(0);
-    return {
-      'A': 'bg-serie-a',
-      'B': 'bg-serie-b',
-      'C': 'bg-serie-c',
-      'D': 'bg-serie-d'
-    }[serie];
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      
+      const [exchangesData, statsData, weeksData, usersData] = await Promise.all([
+        getUserExchanges(user.uid),
+        getExchangeStats(user.uid),
+        getUserWeeksForYear(user.uid, currentYear),
+        getAllUsers()
+      ]);
+      
+      setSentExchanges(exchangesData.sent);
+      setReceivedExchanges(exchangesData.received);
+      setStats(statsData);
+      setMyWeeks(weeksData);
+      
+      // Filtrar solo usuarios activos con títulos (excluir usuario actual)
+      const activeUsers = usersData.filter(u => 
+        u.isApproved && 
+        u.isActive && 
+        u.titles && 
+        u.titles.length > 0 &&
+        u.uid !== user.uid
+      );
+      setOtherUsers(activeUsers);
+    } catch (error) {
+      console.error('Error cargando datos:', error);
+      alert('Error al cargar intercambios: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const getStatusBadge = (status) => {
-    const styles = {
-      pending: 'bg-yellow-100 text-yellow-800',
-      accepted: 'bg-green-100 text-green-800',
-      rejected: 'bg-red-100 text-red-800',
-      cancelled: 'bg-gray-100 text-gray-800'
-    };
+  const handleUserSelect = async (userId) => {
+    setSelectedUser(userId);
+    setCreateForm({ ...createForm, targetWeek: '' });
     
-    const labels = {
-      pending: 'Pendiente',
-      accepted: 'Aceptado',
-      rejected: 'Rechazado',
-      cancelled: 'Cancelado'
-    };
+    if (!userId) {
+      setSelectedUserWeeks([]);
+      return;
+    }
 
-    return (
-      <span className={`px-3 py-1 rounded-full text-xs font-medium ${styles[status]}`}>
-        {labels[status]}
-      </span>
-    );
+    try {
+      const weeks = await getUserWeeksForYear(userId, currentYear);
+      setSelectedUserWeeks(weeks);
+    } catch (error) {
+      console.error('Error cargando semanas del usuario:', error);
+      setSelectedUserWeeks([]);
+    }
   };
 
-  const handleCreateExchange = () => {
-    // Simulación - En Fase 2 guardará en Firebase
-    console.log('Crear intercambio:', createForm);
-    alert('Solicitud de intercambio enviada');
-    setShowCreateModal(false);
-    setCreateForm({ myWeek: '', targetUser: '', targetWeek: '', message: '' });
+  const handleCreateExchange = async () => {
+    if (!createForm.myWeek || !createForm.targetWeek) {
+      alert('Debes seleccionar ambas semanas');
+      return;
+    }
+
+    if (!selectedUser) {
+      alert('Debes seleccionar un usuario');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+
+      // Encontrar detalles de las semanas seleccionadas
+      const myWeekData = myWeeks.find(w => `${w.titleId}-${w.weekNumber}` === createForm.myWeek);
+      const targetWeekData = selectedUserWeeks.find(w => `${w.titleId}-${w.weekNumber}` === createForm.targetWeek);
+
+      if (!myWeekData || !targetWeekData) {
+        alert('Error: No se encontraron los datos de las semanas');
+        return;
+      }
+
+      // Verificar duplicados
+      const isDuplicate = await checkDuplicateExchange(
+        user.uid,
+        selectedUser,
+        { titleId: myWeekData.titleId, weekNumber: myWeekData.weekNumber },
+        { titleId: targetWeekData.titleId, weekNumber: targetWeekData.weekNumber }
+      );
+
+      if (isDuplicate) {
+        alert('Ya existe una solicitud pendiente para este intercambio');
+        return;
+      }
+
+      // Crear intercambio
+      await createExchange({
+        fromUserId: user.uid,
+        toUserId: selectedUser,
+        fromWeek: {
+          titleId: myWeekData.titleId,
+          weekNumber: myWeekData.weekNumber
+        },
+        toWeek: {
+          titleId: targetWeekData.titleId,
+          weekNumber: targetWeekData.weekNumber
+        },
+        message: createForm.message,
+        year: currentYear
+      });
+
+      alert('Solicitud de intercambio enviada exitosamente');
+      setShowCreateModal(false);
+      setCreateForm({ myWeek: '', targetWeek: '', message: '' });
+      setSelectedUser('');
+      setSelectedUserWeeks([]);
+      await loadData();
+    } catch (error) {
+      console.error('Error creando intercambio:', error);
+      alert('Error al crear intercambio: ' + error.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleAcceptExchange = (exchangeId) => {
-    // Simulación - En Fase 2 actualizará Firebase
-    console.log('Aceptar intercambio:', exchangeId);
-    alert('Intercambio aceptado');
-    setShowDetailsModal(false);
-  };
-
-  const handleRejectExchange = (exchangeId) => {
-    // Simulación - En Fase 2 actualizará Firebase
-    console.log('Rechazar intercambio:', exchangeId);
-    alert('Intercambio rechazado');
-    setShowDetailsModal(false);
-  };
-
-  const handleCancelExchange = (exchangeId) => {
-    // Simulación - En Fase 2 actualizará Firebase
-    console.log('Cancelar intercambio:', exchangeId);
-    if (confirm('¿Estás seguro de cancelar esta solicitud?')) {
-      alert('Solicitud cancelada');
+  const handleAccept = async (exchangeId) => {
+    try {
+      setSubmitting(true);
+      await acceptExchange(exchangeId);
+      alert('Intercambio aceptado exitosamente');
       setShowDetailsModal(false);
+      await loadData();
+    } catch (error) {
+      console.error('Error aceptando intercambio:', error);
+      alert('Error al aceptar intercambio: ' + error.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleReject = async (exchangeId) => {
+    if (!confirm('¿Estás seguro de rechazar esta solicitud?')) {
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await rejectExchange(exchangeId);
+      alert('Intercambio rechazado');
+      setShowDetailsModal(false);
+      await loadData();
+    } catch (error) {
+      console.error('Error rechazando intercambio:', error);
+      alert('Error al rechazar intercambio: ' + error.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCancel = async (exchangeId) => {
+    if (!confirm('¿Estás seguro de cancelar esta solicitud?')) {
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await cancelExchange(exchangeId, user.uid);
+      alert('Solicitud cancelada');
+      await loadData();
+    } catch (error) {
+      console.error('Error cancelando intercambio:', error);
+      alert('Error al cancelar: ' + error.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -159,10 +233,55 @@ export default function Exchanges() {
     setShowDetailsModal(true);
   };
 
+  const getStatusBadge = (status) => {
+    const badges = {
+      pending: { color: 'bg-yellow-100 text-yellow-800', icon: Clock, label: 'Pendiente' },
+      accepted: { color: 'bg-green-100 text-green-800', icon: CheckCircle, label: 'Aceptado' },
+      rejected: { color: 'bg-red-100 text-red-800', icon: XCircle, label: 'Rechazado' },
+      cancelled: { color: 'bg-gray-100 text-gray-800', icon: XCircle, label: 'Cancelado' }
+    };
+
+    const badge = badges[status] || badges.pending;
+    const Icon = badge.icon;
+
+    return (
+      <span className={`px-3 py-1 rounded-full text-xs font-medium ${badge.color} flex items-center gap-1`}>
+        <Icon size={12} />
+        {badge.label}
+      </span>
+    );
+  };
+
+  const getSerieColor = (titleId) => {
+    const serie = titleId?.charAt(0);
+    return {
+      'A': 'bg-serie-a',
+      'B': 'bg-serie-b',
+      'C': 'bg-serie-c',
+      'D': 'bg-serie-d'
+    }[serie] || 'bg-gray-200';
+  };
+
+  const filteredExchanges = activeTab === 'received' 
+    ? receivedExchanges.filter(e => e.status === 'pending')
+    : activeTab === 'sent'
+    ? sentExchanges.filter(e => e.status === 'pending')
+    : [...sentExchanges, ...receivedExchanges].filter(e => e.status !== 'pending');
+
+  if (loading) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex items-center justify-center h-64">
+          <RefreshCw className="animate-spin text-gray-400" size={32} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
-      <div className="mb-8 flex items-start justify-between">
+      <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Intercambios</h1>
           <p className="text-gray-600 mt-1">
@@ -172,339 +291,280 @@ export default function Exchanges() {
         <Button
           onClick={() => setShowCreateModal(true)}
           className="flex items-center gap-2"
+          disabled={myWeeks.length === 0}
         >
-          <Plus size={18} />
+          <Send size={16} />
           Nueva solicitud
         </Button>
       </div>
 
       {/* Estadísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <Card>
-          <div className="text-center">
-            <p className="text-3xl font-bold text-gray-900">
-              {receivedExchanges.filter(e => e.status === 'pending').length}
-            </p>
-            <p className="text-gray-600 mt-1">Solicitudes recibidas</p>
-          </div>
-        </Card>
+      {stats && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <Card>
+            <div className="text-center">
+              <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
+              <p className="text-gray-600 mt-1">Total</p>
+            </div>
+          </Card>
 
-        <Card>
-          <div className="text-center">
-            <p className="text-3xl font-bold text-gray-900">
-              {sentExchanges.filter(e => e.status === 'pending').length}
-            </p>
-            <p className="text-gray-600 mt-1">Solicitudes enviadas</p>
-          </div>
-        </Card>
+          <Card>
+            <div className="text-center">
+              <p className="text-3xl font-bold text-yellow-600">{stats.pending}</p>
+              <p className="text-gray-600 mt-1">Pendientes</p>
+            </div>
+          </Card>
 
-        <Card>
-          <div className="text-center">
-            <p className="text-3xl font-bold text-gray-900">
-              {historyExchanges.length}
-            </p>
-            <p className="text-gray-600 mt-1">Historial total</p>
-          </div>
-        </Card>
-      </div>
+          <Card>
+            <div className="text-center">
+              <p className="text-3xl font-bold text-green-600">{stats.accepted}</p>
+              <p className="text-gray-600 mt-1">Aceptados</p>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="text-center">
+              <p className="text-3xl font-bold text-red-600">{stats.rejected}</p>
+              <p className="text-gray-600 mt-1">Rechazados</p>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Tabs */}
-      <div className="mb-6">
-        <div className="border-b border-gray-200">
-          <nav className="flex space-x-8">
-            <button
-              onClick={() => setActiveTab('received')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
-                activeTab === 'received'
-                  ? 'border-gray-700 text-gray-900'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <Inbox size={18} />
-              Recibidas ({receivedExchanges.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('sent')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
-                activeTab === 'sent'
-                  ? 'border-gray-700 text-gray-900'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <Send size={18} />
-              Enviadas ({sentExchanges.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('history')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${
-                activeTab === 'history'
-                  ? 'border-gray-700 text-gray-900'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              <History size={18} />
-              Historial ({historyExchanges.length})
-            </button>
-          </nav>
-        </div>
+      <div className="flex gap-2 mb-6">
+        <button
+          onClick={() => setActiveTab('received')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            activeTab === 'received'
+              ? 'bg-gray-800 text-white'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`}
+        >
+          Recibidas ({receivedExchanges.filter(e => e.status === 'pending').length})
+        </button>
+        <button
+          onClick={() => setActiveTab('sent')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            activeTab === 'sent'
+              ? 'bg-gray-800 text-white'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`}
+        >
+          Enviadas ({sentExchanges.filter(e => e.status === 'pending').length})
+        </button>
+        <button
+          onClick={() => setActiveTab('history')}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            activeTab === 'history'
+              ? 'bg-gray-800 text-white'
+              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+          }`}
+        >
+          Historial
+        </button>
       </div>
 
-      {/* Contenido según tab activo */}
+      {/* Lista de intercambios */}
       <Card>
-        {/* Tab: Recibidas */}
-        {activeTab === 'received' && (
+        {filteredExchanges.length === 0 ? (
+          <div className="text-center py-12">
+            <ArrowLeftRight size={64} className="mx-auto text-gray-300 mb-4" />
+            <p className="text-gray-500">
+              {activeTab === 'received' && 'No tienes solicitudes recibidas pendientes'}
+              {activeTab === 'sent' && 'No tienes solicitudes enviadas pendientes'}
+              {activeTab === 'history' && 'No tienes historial de intercambios'}
+            </p>
+          </div>
+        ) : (
           <div className="space-y-4">
-            {receivedExchanges.length === 0 ? (
-              <div className="text-center py-12">
-                <Inbox size={64} className="mx-auto text-gray-300 mb-4" />
-                <p className="text-gray-500">No tienes solicitudes recibidas</p>
-              </div>
-            ) : (
-              receivedExchanges.map((exchange) => (
-                <div
-                  key={exchange.id}
-                  className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold text-gray-900">
-                          {exchange.from.name}
-                        </h3>
-                        {getStatusBadge(exchange.status)}
+            {filteredExchanges.map((exchange) => (
+              <div
+                key={exchange.id}
+                className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-3">
+                      {getStatusBadge(exchange.status)}
+                      <span className="text-sm text-gray-500">
+                        {new Date(exchange.createdAt?.seconds * 1000).toLocaleDateString('es-ES')}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Tu semana / Su semana */}
+                      <div>
+                        <p className="text-xs text-gray-500 mb-2">
+                          {activeTab === 'received' ? 'Ofrece' : 'Ofreces'}
+                        </p>
+                        <div className={`${getSerieColor(exchange.fromWeek.titleId)} rounded-lg p-3`}>
+                          <p className="font-bold text-gray-900">
+                            Semana {exchange.fromWeek.weekNumber}
+                          </p>
+                          <p className="text-sm text-gray-700">
+                            {exchange.fromWeek.titleId}
+                          </p>
+                        </div>
                       </div>
-                      <p className="text-sm text-gray-600">{exchange.from.email}</p>
+
+                      <div className="flex items-center justify-center">
+                        <ArrowLeftRight className="text-gray-400" size={24} />
+                      </div>
+
+                      <div>
+                        <p className="text-xs text-gray-500 mb-2">
+                          {activeTab === 'received' ? 'Por tu' : 'Por'}
+                        </p>
+                        <div className={`${getSerieColor(exchange.toWeek.titleId)} rounded-lg p-3`}>
+                          <p className="font-bold text-gray-900">
+                            Semana {exchange.toWeek.weekNumber}
+                          </p>
+                          <p className="text-sm text-gray-700">
+                            {exchange.toWeek.titleId}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <Clock size={16} className="text-gray-400" />
+
+                    {exchange.message && (
+                      <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+                        <p className="text-sm text-gray-700 flex items-start gap-2">
+                          <MessageSquare size={16} className="text-gray-400 mt-0.5" />
+                          {exchange.message}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                    <div className={`${getSerieColor(exchange.fromWeek.title)} rounded-lg p-3`}>
-                      <p className="text-xs text-gray-700 mb-1">Te ofrece:</p>
-                      <p className="font-semibold text-gray-900">Semana {exchange.fromWeek.weekNumber}</p>
-                      <p className="text-sm text-gray-700">{exchange.fromWeek.dates}</p>
-                    </div>
-
-                    <div className="flex items-center justify-center">
-                      <ArrowLeftRight size={24} className="text-gray-400" />
-                    </div>
-
-                    <div className={`${getSerieColor(exchange.toWeek.title)} rounded-lg p-3`}>
-                      <p className="text-xs text-gray-700 mb-1">Por tu:</p>
-                      <p className="font-semibold text-gray-900">Semana {exchange.toWeek.weekNumber}</p>
-                      <p className="text-sm text-gray-700">{exchange.toWeek.dates}</p>
-                    </div>
-                  </div>
-
-                  {exchange.message && (
-                    <div className="bg-gray-50 rounded-lg p-3 mb-3">
-                      <p className="text-sm text-gray-700">{exchange.message}</p>
-                    </div>
-                  )}
-
-                  <div className="flex gap-2">
+                  <div className="ml-4 flex gap-2">
                     <Button
-                      variant="primary"
+                      variant="outline"
+                      size="sm"
                       onClick={() => handleViewDetails(exchange)}
-                      className="flex-1"
                     >
                       Ver detalles
                     </Button>
+                    
+                    {activeTab === 'sent' && exchange.status === 'pending' && (
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => handleCancel(exchange.id)}
+                        disabled={submitting}
+                      >
+                        Cancelar
+                      </Button>
+                    )}
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-        )}
-
-        {/* Tab: Enviadas */}
-        {activeTab === 'sent' && (
-          <div className="space-y-4">
-            {sentExchanges.length === 0 ? (
-              <div className="text-center py-12">
-                <Send size={64} className="mx-auto text-gray-300 mb-4" />
-                <p className="text-gray-500">No has enviado solicitudes</p>
               </div>
-            ) : (
-              sentExchanges.map((exchange) => (
-                <div
-                  key={exchange.id}
-                  className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-all"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold text-gray-900">
-                          Para: {exchange.to.name}
-                        </h3>
-                        {getStatusBadge(exchange.status)}
-                      </div>
-                      <p className="text-sm text-gray-600">{exchange.to.email}</p>
-                    </div>
-                    <Clock size={16} className="text-gray-400" />
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
-                    <div className={`${getSerieColor(exchange.fromWeek.title)} rounded-lg p-3`}>
-                      <p className="text-xs text-gray-700 mb-1">Ofreces:</p>
-                      <p className="font-semibold text-gray-900">Semana {exchange.fromWeek.weekNumber}</p>
-                      <p className="text-sm text-gray-700">{exchange.fromWeek.dates}</p>
-                    </div>
-
-                    <div className="flex items-center justify-center">
-                      <ArrowLeftRight size={24} className="text-gray-400" />
-                    </div>
-
-                    <div className={`${getSerieColor(exchange.toWeek.title)} rounded-lg p-3`}>
-                      <p className="text-xs text-gray-700 mb-1">Por:</p>
-                      <p className="font-semibold text-gray-900">Semana {exchange.toWeek.weekNumber}</p>
-                      <p className="text-sm text-gray-700">{exchange.toWeek.dates}</p>
-                    </div>
-                  </div>
-
-                  <Button
-                    variant="secondary"
-                    onClick={() => handleViewDetails(exchange)}
-                    fullWidth
-                  >
-                    Ver detalles
-                  </Button>
-                </div>
-              ))
-            )}
-          </div>
-        )}
-
-        {/* Tab: Historial */}
-        {activeTab === 'history' && (
-          <div className="space-y-4">
-            {historyExchanges.length === 0 ? (
-              <div className="text-center py-12">
-                <History size={64} className="mx-auto text-gray-300 mb-4" />
-                <p className="text-gray-500">No hay historial de intercambios</p>
-              </div>
-            ) : (
-              historyExchanges.map((exchange) => (
-                <div
-                  key={exchange.id}
-                  className="border border-gray-200 rounded-lg p-4"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold text-gray-900">
-                          {exchange.with.name}
-                        </h3>
-                        {getStatusBadge(exchange.status)}
-                      </div>
-                      <p className="text-sm text-gray-600">
-                        {new Date(exchange.resolvedAt).toLocaleDateString('es-ES', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className={`${getSerieColor(exchange.fromWeek.title)} rounded-lg p-3`}>
-                      <p className="font-semibold text-gray-900">Semana {exchange.fromWeek.weekNumber}</p>
-                      <p className="text-sm text-gray-700">{exchange.fromWeek.dates}</p>
-                    </div>
-
-                    <div className="flex items-center justify-center">
-                      <ArrowLeftRight size={24} className="text-gray-400" />
-                    </div>
-
-                    <div className={`${getSerieColor(exchange.toWeek.title)} rounded-lg p-3`}>
-                      <p className="font-semibold text-gray-900">Semana {exchange.toWeek.weekNumber}</p>
-                      <p className="text-sm text-gray-700">{exchange.toWeek.dates}</p>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
+            ))}
           </div>
         )}
       </Card>
 
-      {/* Modal: Crear intercambio */}
+      {/* Modal crear intercambio */}
       <Modal
         isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
+        onClose={() => {
+          setShowCreateModal(false);
+          setCreateForm({ myWeek: '', targetWeek: '', message: '' });
+          setSelectedUser('');
+          setSelectedUserWeeks([]);
+        }}
         title="Nueva solicitud de intercambio"
-        size="lg"
       >
         <div className="space-y-4">
+          {/* Seleccionar tu semana */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Tu semana a ofrecer
+              Tu semana a intercambiar
             </label>
             <select
               value={createForm.myWeek}
-              onChange={(e) => setCreateForm({...createForm, myWeek: e.target.value})}
+              onChange={(e) => setCreateForm({ ...createForm, myWeek: e.target.value })}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none"
             >
               <option value="">Selecciona una semana</option>
-              {myWeeks2027.map((week) => (
-                <option key={week.id} value={week.id}>
-                  {week.type === 'special' ? week.name : `Semana ${week.weekNumber}`} - {week.dates} ({week.title})
+              {myWeeks.map((week, idx) => (
+                <option key={idx} value={`${week.titleId}-${week.weekNumber}`}>
+                  Semana {week.weekNumber} - {week.titleId}
                 </option>
               ))}
             </select>
           </div>
 
+          {/* Seleccionar usuario */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Usuario destino
+              Usuario con quien intercambiar
             </label>
             <select
-              value={createForm.targetUser}
-              onChange={(e) => setCreateForm({...createForm, targetUser: e.target.value})}
+              value={selectedUser}
+              onChange={(e) => handleUserSelect(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none"
             >
               <option value="">Selecciona un usuario</option>
               {otherUsers.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name} ({u.email})
+                <option key={u.uid} value={u.uid}>
+                  {u.name} ({u.titles.length} título{u.titles.length > 1 ? 's' : ''})
                 </option>
               ))}
             </select>
           </div>
 
-          <Input
-            label="Semana que deseas"
-            placeholder="Ej: Semana 8, PASCUA, etc."
-            value={createForm.targetWeek}
-            onChange={(e) => setCreateForm({...createForm, targetWeek: e.target.value})}
-          />
+          {/* Seleccionar semana del otro usuario */}
+          {selectedUser && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Semana que deseas
+              </label>
+              {selectedUserWeeks.length === 0 ? (
+                <p className="text-sm text-gray-500">Este usuario no tiene semanas disponibles</p>
+              ) : (
+                <select
+                  value={createForm.targetWeek}
+                  onChange={(e) => setCreateForm({ ...createForm, targetWeek: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none"
+                >
+                  <option value="">Selecciona una semana</option>
+                  {selectedUserWeeks.map((week, idx) => (
+                    <option key={idx} value={`${week.titleId}-${week.weekNumber}`}>
+                      Semana {week.weekNumber} - {week.titleId}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
 
+          {/* Mensaje opcional */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Mensaje (opcional)
             </label>
             <textarea
               value={createForm.message}
-              onChange={(e) => setCreateForm({...createForm, message: e.target.value})}
+              onChange={(e) => setCreateForm({ ...createForm, message: e.target.value })}
+              placeholder="Ej: Me interesa tu semana, ¿podríamos hacer el intercambio?"
               rows={3}
-              placeholder="Agrega un mensaje para el usuario..."
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none resize-none"
             />
           </div>
 
-          <div className="flex gap-3 pt-4">
+          <div className="flex gap-2 pt-4">
             <Button
               variant="secondary"
               onClick={() => setShowCreateModal(false)}
-              fullWidth
+              className="flex-1"
             >
               Cancelar
             </Button>
             <Button
               onClick={handleCreateExchange}
-              fullWidth
-              disabled={!createForm.myWeek || !createForm.targetUser || !createForm.targetWeek}
+              disabled={submitting || !createForm.myWeek || !createForm.targetWeek}
+              className="flex-1"
             >
               Enviar solicitud
             </Button>
@@ -512,96 +572,89 @@ export default function Exchanges() {
         </div>
       </Modal>
 
-      {/* Modal: Detalles de intercambio */}
+      {/* Modal detalles */}
       <Modal
         isOpen={showDetailsModal}
-        onClose={() => setShowDetailsModal(false)}
+        onClose={() => {
+          setShowDetailsModal(false);
+          setSelectedExchange(null);
+        }}
         title="Detalles del intercambio"
-        size="lg"
       >
         {selectedExchange && (
-          <div className="space-y-4">
-            <div className="bg-gray-50 rounded-lg p-4">
-              <p className="text-sm text-gray-600 mb-1">
-                {activeTab === 'received' ? 'De' : activeTab === 'sent' ? 'Para' : 'Con'}
-              </p>
-              <p className="font-semibold text-gray-900">
-                {selectedExchange.from?.name || selectedExchange.to?.name || selectedExchange.with?.name}
-              </p>
-              <p className="text-sm text-gray-600">
-                {selectedExchange.from?.email || selectedExchange.to?.email || selectedExchange.with?.email}
-              </p>
+          <div className="space-y-6">
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-gray-900">Estado</h3>
+                {getStatusBadge(selectedExchange.status)}
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-sm text-gray-600 mb-2">
-                  {activeTab === 'received' ? 'Te ofrece' : 'Ofreces'}
+                <p className="text-sm text-gray-500 mb-2">
+                  {activeTab === 'received' ? 'Usuario ofrece' : 'Ofreces'}
                 </p>
-                <div className={`${getSerieColor(selectedExchange.fromWeek.title)} rounded-lg p-3`}>
-                  <p className="font-semibold text-gray-900">
+                <div className={`${getSerieColor(selectedExchange.fromWeek.titleId)} rounded-lg p-4`}>
+                  <p className="text-2xl font-bold text-gray-900">
                     Semana {selectedExchange.fromWeek.weekNumber}
                   </p>
-                  <p className="text-sm text-gray-700">{selectedExchange.fromWeek.dates}</p>
-                  <p className="text-sm text-gray-700">{selectedExchange.fromWeek.title}</p>
+                  <p className="text-sm text-gray-700 mt-1">
+                    {selectedExchange.fromWeek.titleId}
+                  </p>
                 </div>
               </div>
 
               <div>
-                <p className="text-sm text-gray-600 mb-2">
-                  {activeTab === 'received' ? 'Por tu' : 'Por'}
+                <p className="text-sm text-gray-500 mb-2">
+                  {activeTab === 'received' ? 'Por tu semana' : 'Por'}
                 </p>
-                <div className={`${getSerieColor(selectedExchange.toWeek.title)} rounded-lg p-3`}>
-                  <p className="font-semibold text-gray-900">
+                <div className={`${getSerieColor(selectedExchange.toWeek.titleId)} rounded-lg p-4`}>
+                  <p className="text-2xl font-bold text-gray-900">
                     Semana {selectedExchange.toWeek.weekNumber}
                   </p>
-                  <p className="text-sm text-gray-700">{selectedExchange.toWeek.dates}</p>
-                  <p className="text-sm text-gray-700">{selectedExchange.toWeek.title}</p>
+                  <p className="text-sm text-gray-700 mt-1">
+                    {selectedExchange.toWeek.titleId}
+                  </p>
                 </div>
               </div>
             </div>
 
             {selectedExchange.message && (
-              <div className="bg-gray-50 rounded-lg p-4">
-                <p className="text-sm text-gray-600 mb-1">Mensaje:</p>
-                <p className="text-gray-900">{selectedExchange.message}</p>
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-2">Mensaje</p>
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <p className="text-sm text-gray-700">{selectedExchange.message}</p>
+                </div>
               </div>
             )}
 
-            <div className="bg-gray-50 rounded-lg p-4">
-              <p className="text-sm text-gray-600">Estado: {getStatusBadge(selectedExchange.status)}</p>
+            <div className="text-sm text-gray-500">
+              <p>Enviado: {new Date(selectedExchange.createdAt?.seconds * 1000).toLocaleString('es-ES')}</p>
+              {selectedExchange.resolvedAt && (
+                <p>Resuelto: {new Date(selectedExchange.resolvedAt?.seconds * 1000).toLocaleString('es-ES')}</p>
+              )}
             </div>
 
-            {selectedExchange.status === 'pending' && activeTab === 'received' && (
-              <div className="flex gap-3 pt-4">
+            {/* Acciones */}
+            {activeTab === 'received' && selectedExchange.status === 'pending' && (
+              <div className="flex gap-2 pt-4 border-t">
                 <Button
                   variant="danger"
-                  onClick={() => handleRejectExchange(selectedExchange.id)}
-                  fullWidth
-                  className="flex items-center justify-center gap-2"
+                  onClick={() => handleReject(selectedExchange.id)}
+                  disabled={submitting}
+                  className="flex-1"
                 >
-                  <XCircle size={18} />
+                  <XCircle size={16} />
                   Rechazar
                 </Button>
                 <Button
-                  onClick={() => handleAcceptExchange(selectedExchange.id)}
-                  fullWidth
-                  className="flex items-center justify-center gap-2"
+                  onClick={() => handleAccept(selectedExchange.id)}
+                  disabled={submitting}
+                  className="flex-1"
                 >
-                  <CheckCircle size={18} />
+                  <CheckCircle size={16} />
                   Aceptar
-                </Button>
-              </div>
-            )}
-
-            {selectedExchange.status === 'pending' && activeTab === 'sent' && (
-              <div className="pt-4">
-                <Button
-                  variant="danger"
-                  onClick={() => handleCancelExchange(selectedExchange.id)}
-                  fullWidth
-                >
-                  Cancelar solicitud
                 </Button>
               </div>
             )}
@@ -621,7 +674,7 @@ export default function Exchanges() {
                 Sobre los intercambios
               </h3>
               <ul className="text-sm text-gray-600 space-y-1">
-                <li>• Los intercambios solo son válidos para el año en curso</li>
+                <li>• Los intercambios solo son válidos para el año en curso ({currentYear})</li>
                 <li>• Ambas partes deben aceptar para que el intercambio sea efectivo</li>
                 <li>• Puedes cancelar una solicitud enviada si aún está pendiente</li>
                 <li>• Una vez realizado el intercambio, las semanas vuelven a su estado original el siguiente año</li>
