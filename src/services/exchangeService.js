@@ -8,10 +8,15 @@ import {
   query,
   where,
   orderBy,
-  serverTimestamp,
-  or
+  serverTimestamp
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { 
+  notifyNewExchangeRequest,
+  notifyExchangeAccepted,
+  notifyExchangeRejected,
+  notifyExchangeCancelled
+} from './notificationService';
 
 /**
  * Crear una nueva solicitud de intercambio
@@ -22,9 +27,7 @@ export const createExchange = async (exchangeData) => {
   try {
     const { fromUserId, toUserId, fromWeek, toWeek, message, year } = exchangeData;
 
-    // Validar que las semanas existan y pertenezcan a los usuarios correctos
-    // Aquí puedes agregar validaciones adicionales
-
+    // Crear intercambio
     const exchangeRef = await addDoc(collection(db, 'exchanges'), {
       fromUserId,
       toUserId,
@@ -39,6 +42,31 @@ export const createExchange = async (exchangeData) => {
     });
 
     console.log('Intercambio creado:', exchangeRef.id);
+
+    // Obtener información de usuarios para notificación
+    try {
+      const fromUserDoc = await getDoc(doc(db, 'users', fromUserId));
+      const toUserDoc = await getDoc(doc(db, 'users', toUserId));
+
+      if (fromUserDoc.exists() && toUserDoc.exists()) {
+        const fromUserData = fromUserDoc.data();
+        const toUserData = toUserDoc.data();
+
+        // Enviar notificación al usuario que recibe la solicitud
+        await notifyNewExchangeRequest({
+          toUserEmail: toUserData.email,
+          toUserName: toUserData.name,
+          fromUserName: fromUserData.name,
+          fromWeek,
+          toWeek,
+          year
+        });
+      }
+    } catch (emailError) {
+      console.error('Error enviando notificación:', emailError);
+      // No lanzar error para no afectar la creación del intercambio
+    }
+
     return exchangeRef.id;
   } catch (error) {
     console.error('Error creando intercambio:', error);
@@ -123,6 +151,13 @@ export const getPendingExchanges = async (userId) => {
 export const acceptExchange = async (exchangeId) => {
   try {
     const exchangeRef = doc(db, 'exchanges', exchangeId);
+    const exchangeDoc = await getDoc(exchangeRef);
+    
+    if (!exchangeDoc.exists()) {
+      throw new Error('Intercambio no encontrado');
+    }
+    
+    const exchangeData = exchangeDoc.data();
     
     await updateDoc(exchangeRef, {
       status: 'accepted',
@@ -131,6 +166,28 @@ export const acceptExchange = async (exchangeId) => {
     });
     
     console.log('Intercambio aceptado:', exchangeId);
+
+    // Enviar notificación al usuario que envió la solicitud
+    try {
+      const fromUserDoc = await getDoc(doc(db, 'users', exchangeData.fromUserId));
+      const toUserDoc = await getDoc(doc(db, 'users', exchangeData.toUserId));
+
+      if (fromUserDoc.exists() && toUserDoc.exists()) {
+        const fromUserData = fromUserDoc.data();
+        const toUserData = toUserDoc.data();
+
+        await notifyExchangeAccepted({
+          toUserEmail: fromUserData.email,
+          toUserName: fromUserData.name,
+          fromUserName: toUserData.name,
+          fromWeek: exchangeData.fromWeek,
+          toWeek: exchangeData.toWeek,
+          year: exchangeData.year
+        });
+      }
+    } catch (emailError) {
+      console.error('Error enviando notificación:', emailError);
+    }
   } catch (error) {
     console.error('Error aceptando intercambio:', error);
     throw new Error('Error al aceptar el intercambio');
@@ -145,6 +202,13 @@ export const acceptExchange = async (exchangeId) => {
 export const rejectExchange = async (exchangeId) => {
   try {
     const exchangeRef = doc(db, 'exchanges', exchangeId);
+    const exchangeDoc = await getDoc(exchangeRef);
+    
+    if (!exchangeDoc.exists()) {
+      throw new Error('Intercambio no encontrado');
+    }
+    
+    const exchangeData = exchangeDoc.data();
     
     await updateDoc(exchangeRef, {
       status: 'rejected',
@@ -153,6 +217,28 @@ export const rejectExchange = async (exchangeId) => {
     });
     
     console.log('Intercambio rechazado:', exchangeId);
+
+    // Enviar notificación al usuario que envió la solicitud
+    try {
+      const fromUserDoc = await getDoc(doc(db, 'users', exchangeData.fromUserId));
+      const toUserDoc = await getDoc(doc(db, 'users', exchangeData.toUserId));
+
+      if (fromUserDoc.exists() && toUserDoc.exists()) {
+        const fromUserData = fromUserDoc.data();
+        const toUserData = toUserDoc.data();
+
+        await notifyExchangeRejected({
+          toUserEmail: fromUserData.email,
+          toUserName: fromUserData.name,
+          fromUserName: toUserData.name,
+          fromWeek: exchangeData.fromWeek,
+          toWeek: exchangeData.toWeek,
+          year: exchangeData.year
+        });
+      }
+    } catch (emailError) {
+      console.error('Error enviando notificación:', emailError);
+    }
   } catch (error) {
     console.error('Error rechazando intercambio:', error);
     throw new Error('Error al rechazar el intercambio');
@@ -193,6 +279,28 @@ export const cancelExchange = async (exchangeId, userId) => {
     });
     
     console.log('Intercambio cancelado:', exchangeId);
+
+    // Enviar notificación al usuario que iba a recibir el intercambio
+    try {
+      const fromUserDoc = await getDoc(doc(db, 'users', exchangeData.fromUserId));
+      const toUserDoc = await getDoc(doc(db, 'users', exchangeData.toUserId));
+
+      if (fromUserDoc.exists() && toUserDoc.exists()) {
+        const fromUserData = fromUserDoc.data();
+        const toUserData = toUserDoc.data();
+
+        await notifyExchangeCancelled({
+          toUserEmail: toUserData.email,
+          toUserName: toUserData.name,
+          fromUserName: fromUserData.name,
+          fromWeek: exchangeData.fromWeek,
+          toWeek: exchangeData.toWeek,
+          year: exchangeData.year
+        });
+      }
+    } catch (emailError) {
+      console.error('Error enviando notificación:', emailError);
+    }
   } catch (error) {
     console.error('Error cancelando intercambio:', error);
     throw error;
