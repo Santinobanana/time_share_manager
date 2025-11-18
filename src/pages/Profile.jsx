@@ -4,7 +4,8 @@ import Card from '../components/common/Card';
 import Button from '../components/common/Button';
 import Input from '../components/common/Input';
 import Modal from '../components/common/Modal';
-import { User, Mail, Phone, Key, Calendar, Home, Edit, Save, X } from 'lucide-react';
+import PDFDownloadButton from '../components/common/PDFDownloadButton';
+import { User, Mail, Phone, Key, Calendar, Home, Edit, Save, X, FileDown } from 'lucide-react';
 import { updateUser } from '../services/userService';
 import { getTitlesByUser } from '../services/titleService';
 import { updatePassword } from 'firebase/auth';
@@ -58,7 +59,6 @@ export default function Profile() {
 
   const handleEditToggle = () => {
     if (isEditing) {
-      // Cancelar edición
       setEditForm({
         name: user?.name || '',
         phone: user?.phone || ''
@@ -69,7 +69,6 @@ export default function Profile() {
   };
 
   const handleSaveProfile = async () => {
-    // Validaciones
     const newErrors = {};
     
     if (!editForm.name.trim()) {
@@ -91,8 +90,6 @@ export default function Profile() {
       alert('Perfil actualizado exitosamente');
       setIsEditing(false);
       setErrors({});
-      
-      // Recargar la página para actualizar el contexto
       window.location.reload();
     } catch (error) {
       console.error('Error actualizando perfil:', error);
@@ -103,7 +100,6 @@ export default function Profile() {
   };
 
   const handleChangePassword = async () => {
-    // Validaciones
     const newErrors = {};
     
     if (!passwordForm.currentPassword) {
@@ -127,8 +123,8 @@ export default function Profile() {
 
     try {
       setLoading(true);
-      
       const currentUser = auth.currentUser;
+      
       if (!currentUser) {
         throw new Error('No hay usuario autenticado');
       }
@@ -137,66 +133,52 @@ export default function Profile() {
       
       alert('Contraseña actualizada exitosamente');
       setShowPasswordModal(false);
-      setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      setPasswordForm({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      });
       setErrors({});
     } catch (error) {
       console.error('Error cambiando contraseña:', error);
       
-      let errorMessage = 'Error al cambiar la contraseña';
       if (error.code === 'auth/requires-recent-login') {
-        errorMessage = 'Por seguridad, debes cerrar sesión y volver a iniciar para cambiar tu contraseña';
+        alert('Por seguridad, necesitas volver a iniciar sesión antes de cambiar tu contraseña');
+      } else {
+        alert('Error al cambiar contraseña: ' + error.message);
       }
-      
-      alert(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Mi Perfil</h1>
-        <p className="text-gray-600 mt-1">
-          Gestiona tu información personal y configuración
-        </p>
+        <p className="text-gray-600 mt-1">Gestiona tu información personal y títulos</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Columna izquierda - Información principal */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Información Personal */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Información personal */}
           <Card>
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-gray-900">
-                Información Personal
-              </h2>
+              <h2 className="text-xl font-semibold text-gray-900">Información Personal</h2>
               {!isEditing ? (
-                <Button
-                  variant="outline"
-                  onClick={handleEditToggle}
-                  className="flex items-center gap-2"
-                >
-                  <Edit size={16} />
+                <Button variant="secondary" size="sm" onClick={handleEditToggle}>
+                  <Edit size={16} className="mr-2" />
                   Editar
                 </Button>
               ) : (
                 <div className="flex gap-2">
-                  <Button
-                    variant="secondary"
-                    onClick={handleEditToggle}
-                    className="flex items-center gap-2"
-                  >
-                    <X size={16} />
+                  <Button variant="secondary" size="sm" onClick={handleEditToggle}>
+                    <X size={16} className="mr-2" />
                     Cancelar
                   </Button>
-                  <Button
-                    onClick={handleSaveProfile}
-                    disabled={loading}
-                    className="flex items-center gap-2"
-                  >
-                    <Save size={16} />
+                  <Button size="sm" onClick={handleSaveProfile} disabled={loading}>
+                    <Save size={16} className="mr-2" />
                     Guardar
                   </Button>
                 </div>
@@ -204,164 +186,182 @@ export default function Profile() {
             </div>
 
             <div className="space-y-4">
-              {isEditing ? (
-                <>
+              <div>
+                <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
+                  <User size={16} className="mr-2" />
+                  Nombre completo
+                </label>
+                {isEditing ? (
                   <Input
-                    label="Nombre completo"
                     value={editForm.name}
                     onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                     error={errors.name}
-                    icon={User}
                   />
+                ) : (
+                  <p className="text-gray-900 font-medium">{user?.name}</p>
+                )}
+              </div>
 
+              <div>
+                <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
+                  <Mail size={16} className="mr-2" />
+                  Correo electrónico
+                </label>
+                <p className="text-gray-900">{user?.email}</p>
+                <p className="text-xs text-gray-500 mt-1">El correo no se puede cambiar</p>
+              </div>
+
+              <div>
+                <label className="flex items-center text-sm font-medium text-gray-700 mb-2">
+                  <Phone size={16} className="mr-2" />
+                  Teléfono
+                </label>
+                {isEditing ? (
                   <Input
-                    label="Teléfono"
                     value={editForm.phone}
                     onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                    placeholder="+52 123 456 7890"
-                    icon={Phone}
+                    placeholder="(opcional)"
                   />
-                </>
-              ) : (
-                <>
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                    <User className="text-gray-400" size={20} />
-                    <div>
-                      <p className="text-sm text-gray-600">Nombre</p>
-                      <p className="font-medium text-gray-900">{user?.name}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                    <Mail className="text-gray-400" size={20} />
-                    <div>
-                      <p className="text-sm text-gray-600">Email</p>
-                      <p className="font-medium text-gray-900">{user?.email}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                    <Phone className="text-gray-400" size={20} />
-                    <div>
-                      <p className="text-sm text-gray-600">Teléfono</p>
-                      <p className="font-medium text-gray-900">
-                        {user?.phone || 'No especificado'}
-                      </p>
-                    </div>
-                  </div>
-                </>
-              )}
+                ) : (
+                  <p className="text-gray-900">{user?.phone || 'No proporcionado'}</p>
+                )}
+              </div>
             </div>
           </Card>
 
           {/* Seguridad */}
           <Card>
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">
-              Seguridad
-            </h2>
-            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <Key className="text-gray-400" size={20} />
-                <div>
-                  <p className="font-medium text-gray-900">Contraseña</p>
-                  <p className="text-sm text-gray-600">••••••••</p>
-                </div>
+            <h2 className="text-xl font-semibold text-gray-900 mb-6">Seguridad</h2>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-gray-900">Contraseña</p>
+                <p className="text-sm text-gray-600">••••••••</p>
               </div>
-              <Button
-                variant="outline"
-                onClick={() => setShowPasswordModal(true)}
-              >
-                Cambiar
+              <Button variant="secondary" size="sm" onClick={() => setShowPasswordModal(true)}>
+                <Key size={16} className="mr-2" />
+                Cambiar contraseña
               </Button>
             </div>
           </Card>
         </div>
 
-        {/* Columna derecha - Títulos y estadísticas */}
+        {/* Sidebar - Títulos */}
         <div className="space-y-6">
-          {/* Mis títulos */}
           <Card>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Home size={20} />
-              Mis Títulos
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-gray-900">Mis Títulos</h2>
+              <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm font-medium">
+                {userTitles.length}
+              </span>
+            </div>
+
             {userTitles.length === 0 ? (
-              <p className="text-gray-500 text-sm">Sin títulos asignados</p>
+              <div className="text-center py-8">
+                <Home size={48} className="mx-auto text-gray-300 mb-3" />
+                <p className="text-gray-500 text-sm">
+                  Aún no tienes títulos asignados
+                </p>
+              </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {userTitles.map((title) => (
                   <div
                     key={title.id}
-                    className={`${getSerieColor(title.serie)} rounded-lg p-3`}
+                    className={`${getSerieColor(title)} rounded-lg p-3`}
                   >
-                    <p className="font-bold text-gray-900">{title.id}</p>
-                    <p className="text-sm text-gray-700">
-                      Serie {title.serie} - Subserie {title.subserie}
-                    </p>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Home size={18} />
+                        <span className="font-bold">{title.id}</span>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
           </Card>
 
-          {/* Estadísticas */}
-          <Card>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Calendar size={20} />
-              Estadísticas
-            </h2>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600">Títulos</span>
-                <span className="font-bold text-gray-900">{userTitles.length}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600">Semanas 2027</span>
-                <span className="font-bold text-gray-900">{userTitles.length}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-gray-600">Intercambios</span>
-                <span className="font-bold text-gray-900">0</span>
-              </div>
-            </div>
-          </Card>
+          {/* Botón descargar calendario */}
+          {userTitles.length > 0 && (
+            <Card>
+              <h3 className="font-semibold text-gray-900 mb-3">Calendario completo</h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Descarga el calendario de todos tus títulos con información de los próximos 48 años (2027-2074)
+              </p>
+              <PDFDownloadButton
+                data={userTitles}
+                userName={user?.name}
+                variant="primary"
+                size="md"
+                className="w-full"
+                label={
+                  <span className="flex items-center justify-center">
+                    <FileDown size={18} className="mr-2" />
+                    Descargar mi calendario
+                  </span>
+                }
+              />
+              <p className="text-xs text-gray-500 mt-2 text-center">
+                PDF con {userTitles.length} título{userTitles.length > 1 ? 's' : ''}
+              </p>
+            </Card>
+          )}
         </div>
       </div>
 
-      {/* Modal cambio de contraseña */}
+      {/* Modal cambiar contraseña */}
       <Modal
         isOpen={showPasswordModal}
         onClose={() => {
           setShowPasswordModal(false);
-          setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+          setPasswordForm({
+            currentPassword: '',
+            newPassword: '',
+            confirmPassword: ''
+          });
           setErrors({});
         }}
         title="Cambiar contraseña"
       >
         <div className="space-y-4">
-          <Input
-            type="password"
-            label="Contraseña actual"
-            value={passwordForm.currentPassword}
-            onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
-            error={errors.currentPassword}
-          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Contraseña actual
+            </label>
+            <Input
+              type="password"
+              value={passwordForm.currentPassword}
+              onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+              error={errors.currentPassword}
+              placeholder="Ingresa tu contraseña actual"
+            />
+          </div>
 
-          <Input
-            type="password"
-            label="Nueva contraseña"
-            value={passwordForm.newPassword}
-            onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-            error={errors.newPassword}
-          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Nueva contraseña
+            </label>
+            <Input
+              type="password"
+              value={passwordForm.newPassword}
+              onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+              error={errors.newPassword}
+              placeholder="Mínimo 6 caracteres"
+            />
+          </div>
 
-          <Input
-            type="password"
-            label="Confirmar nueva contraseña"
-            value={passwordForm.confirmPassword}
-            onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
-            error={errors.confirmPassword}
-          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Confirmar nueva contraseña
+            </label>
+            <Input
+              type="password"
+              value={passwordForm.confirmPassword}
+              onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+              error={errors.confirmPassword}
+              placeholder="Repite la nueva contraseña"
+            />
+          </div>
 
           <div className="flex gap-2 pt-4">
             <Button

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Modal from '../../components/common/Modal';
+import PDFDownloadButton from '../../components/common/PDFDownloadButton';
 import { 
   getAllTitles,
   getTitleById,
@@ -31,9 +32,8 @@ export default function AdminTitles() {
   const [selectedTitle, setSelectedTitle] = useState(null);
   const [titleOwner, setTitleOwner] = useState(null);
 
-  const years = [2027, 2028, 2029, 2030, 2031, 2032, 2033];
+  const years = [2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035];
 
-  // Cargar datos iniciales
   useEffect(() => {
     loadData();
   }, []);
@@ -56,21 +56,17 @@ export default function AdminTitles() {
     }
   };
 
-  // Filtrar títulos
   const filteredTitles = titles.filter(title => {
-    // Filtrar por búsqueda
     if (searchTerm) {
       const search = searchTerm.toLowerCase();
       const matchesId = title.id.toLowerCase().includes(search);
       if (!matchesId) return false;
     }
 
-    // Filtrar por serie
     if (filterSerie !== 'all' && title.serie !== filterSerie) {
       return false;
     }
 
-    // Filtrar por estado
     if (filterStatus === 'assigned' && !title.ownerId) {
       return false;
     }
@@ -94,7 +90,6 @@ export default function AdminTitles() {
     setSelectedTitle(title);
     setShowDetailsModal(true);
     
-    // Cargar información del dueño si tiene
     if (title.ownerId) {
       try {
         const owner = await getTitleOwner(title.id);
@@ -108,7 +103,6 @@ export default function AdminTitles() {
     }
   };
 
-  // Agrupar títulos por subserie para mejor visualización
   const groupedTitles = {};
   filteredTitles.forEach(title => {
     const key = `${title.serie}-${title.subserie}`;
@@ -134,48 +128,61 @@ export default function AdminTitles() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Gestión de Títulos</h1>
-          <p className="text-gray-600 mt-1">
-            Visualiza y administra todos los títulos del condominio
-          </p>
+          <p className="text-gray-600 mt-1">Administra todos los títulos del sistema</p>
         </div>
-        <Button
-          variant="outline"
-          onClick={loadData}
-          className="flex items-center gap-2"
-        >
-          <RefreshCw size={16} />
-          Actualizar
-        </Button>
       </div>
 
       {/* Estadísticas */}
       {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
           <Card>
-            <div className="text-center">
-              <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
-              <p className="text-gray-600 mt-1">Total de títulos</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Total</p>
+                <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
+              </div>
+              <Home size={32} className="text-gray-400" />
             </div>
           </Card>
 
           <Card>
-            <div className="text-center">
-              <p className="text-3xl font-bold text-green-600">{stats.assigned}</p>
-              <p className="text-gray-600 mt-1">Asignados</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Asignados</p>
+                <p className="text-3xl font-bold text-green-600">{stats.assigned}</p>
+              </div>
+              <CheckCircle size={32} className="text-green-400" />
             </div>
           </Card>
 
           <Card>
-            <div className="text-center">
-              <p className="text-3xl font-bold text-blue-600">{stats.available}</p>
-              <p className="text-gray-600 mt-1">Disponibles</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Disponibles</p>
+                <p className="text-3xl font-bold text-blue-600">{stats.available}</p>
+              </div>
+              <XCircle size={32} className="text-blue-400" />
             </div>
           </Card>
 
           <Card>
-            <div className="text-center">
-              <p className="text-3xl font-bold text-purple-600">{stats.occupancyRate}%</p>
-              <p className="text-gray-600 mt-1">Ocupación</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">% Asignados</p>
+                <p className="text-3xl font-bold text-gray-900">{stats.percentAssigned}%</p>
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <div>
+              <p className="text-sm text-gray-600 mb-2">Por Serie</p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-serie-a rounded px-2 py-1 font-medium">A: {stats.bySerie.A}</div>
+                <div className="bg-serie-b rounded px-2 py-1 font-medium">B: {stats.bySerie.B}</div>
+                <div className="bg-serie-c rounded px-2 py-1 font-medium">C: {stats.bySerie.C}</div>
+                <div className="bg-serie-d rounded px-2 py-1 font-medium">D: {stats.bySerie.D}</div>
+              </div>
             </div>
           </Card>
         </div>
@@ -183,9 +190,8 @@ export default function AdminTitles() {
 
       {/* Filtros */}
       <Card className="mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Búsqueda */}
-          <div className="md:col-span-2 relative">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <input
               type="text"
@@ -196,13 +202,12 @@ export default function AdminTitles() {
             />
           </div>
 
-          {/* Filtro por serie */}
-          <div className="flex items-center gap-2">
-            <Filter size={20} className="text-gray-600" />
+          <div className="relative">
+            <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <select
               value={filterSerie}
               onChange={(e) => setFilterSerie(e.target.value)}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none appearance-none"
             >
               <option value="all">Todas las series</option>
               <option value="A">Serie A</option>
@@ -212,22 +217,20 @@ export default function AdminTitles() {
             </select>
           </div>
 
-          {/* Filtro por estado */}
-          <div className="flex items-center gap-2">
-            <Filter size={20} className="text-gray-600" />
+          <div className="relative">
+            <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none appearance-none"
             >
               <option value="all">Todos los estados</option>
-              <option value="assigned">Solo asignados</option>
-              <option value="available">Solo disponibles</option>
+              <option value="assigned">Asignados</option>
+              <option value="available">Disponibles</option>
             </select>
           </div>
         </div>
 
-        {/* Selector de año */}
         <div className="mt-4 flex items-center gap-2">
           <Calendar size={20} className="text-gray-600" />
           <span className="text-sm text-gray-600">Ver semanas del año:</span>
@@ -273,7 +276,6 @@ export default function AdminTitles() {
                       )}
                     </div>
 
-                    {/* Semanas del año seleccionado */}
                     <div className="bg-white/40 backdrop-blur-sm rounded-lg p-2 mb-2 text-center">
                       <p className="text-2xl font-bold text-gray-900">
                         {title.weeksByYear?.[selectedYear] || '-'}
@@ -281,7 +283,6 @@ export default function AdminTitles() {
                       <p className="text-xs text-gray-700">semana en {selectedYear}</p>
                     </div>
 
-                    {/* Estado */}
                     <div className="text-center">
                       {title.ownerId ? (
                         <span className="text-xs bg-white/50 px-2 py-1 rounded-full font-medium">
@@ -301,7 +302,6 @@ export default function AdminTitles() {
         })}
       </div>
 
-      {/* Información si no hay resultados */}
       {filteredTitles.length === 0 && (
         <Card>
           <div className="text-center py-12">
@@ -350,13 +350,13 @@ export default function AdminTitles() {
                   <span className="text-gray-600">Estado:</span>
                   <span className="ml-2">
                     {selectedTitle.ownerId ? (
-                      <span className="text-green-600 font-medium flex items-center gap-1 inline-flex">
-                        <CheckCircle size={14} />
+                      <span className="text-green-600 flex items-center gap-1">
+                        <CheckCircle size={16} />
                         Asignado
                       </span>
                     ) : (
-                      <span className="text-blue-600 font-medium flex items-center gap-1 inline-flex">
-                        <XCircle size={14} />
+                      <span className="text-gray-600 flex items-center gap-1">
+                        <XCircle size={16} />
                         Disponible
                       </span>
                     )}
@@ -367,44 +367,50 @@ export default function AdminTitles() {
 
             {/* Propietario */}
             {titleOwner && (
-              <div className="border-t pt-4">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <User size={18} />
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">
                   Propietario
                 </h3>
-                <div className="space-y-2 text-sm">
-                  <div>
-                    <span className="text-gray-600">Nombre:</span>
-                    <span className="ml-2 font-medium">{titleOwner.name}</span>
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <div className="flex items-center gap-3 mb-2">
+                    <User size={20} className="text-gray-600" />
+                    <span className="font-medium text-gray-900">{titleOwner.name}</span>
                   </div>
-                  <div>
-                    <span className="text-gray-600">Email:</span>
-                    <span className="ml-2 font-medium">{titleOwner.email}</span>
-                  </div>
+                  <p className="text-sm text-gray-600 ml-8">{titleOwner.email}</p>
+                  {titleOwner.phone && (
+                    <p className="text-sm text-gray-600 ml-8">{titleOwner.phone}</p>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* Semanas por año */}
-            <div className="border-t pt-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <Calendar size={18} />
-                Semanas asignadas por año
+            {/* Semanas */}
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                Semanas Asignadas (Próximos años)
               </h3>
-              <div className="grid grid-cols-3 gap-3">
-                {years.map(year => (
-                  <div
-                    key={year}
-                    className="bg-gray-50 rounded-lg p-3 text-center"
-                  >
+              <div className="grid grid-cols-3 gap-2">
+                {years.slice(0, 6).map(year => (
+                  <div key={year} className="bg-gray-50 rounded-lg p-3 text-center">
                     <p className="text-xs text-gray-600 mb-1">{year}</p>
-                    <p className="text-2xl font-bold text-gray-900">
+                    <p className="text-lg font-bold text-gray-900">
                       {selectedTitle.weeksByYear?.[year] || '-'}
                     </p>
-                    <p className="text-xs text-gray-500">semana</p>
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* Botón descargar PDF */}
+            <div className="pt-4 border-t">
+              <PDFDownloadButton
+                data={selectedTitle}
+                userName={titleOwner?.name || ''}
+                variant="primary"
+                size="md"
+                className="w-full"
+                label="Descargar calendario completo (48 años)"
+              />
             </div>
           </div>
         )}

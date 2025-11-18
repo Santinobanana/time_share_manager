@@ -13,7 +13,8 @@ import {
   Calendar,
   User,
   RefreshCw,
-  MessageSquare
+  MessageSquare,
+  AlertCircle
 } from 'lucide-react';
 import {
   getUserExchanges,
@@ -31,6 +32,7 @@ import { getAllUsers } from '../services/userService';
 export default function Exchanges() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [sentExchanges, setSentExchanges] = useState([]);
   const [receivedExchanges, setReceivedExchanges] = useState([]);
   const [stats, setStats] = useState(null);
@@ -62,18 +64,28 @@ export default function Exchanges() {
   const loadData = async () => {
     try {
       setLoading(true);
+      setError(null);
       
-      const [exchangesData, statsData, weeksData, usersData] = await Promise.all([
+      const [exchangesData, statsData, usersData] = await Promise.all([
         getUserExchanges(user.uid),
         getExchangeStats(user.uid),
-        getUserWeeksForYear(user.uid, currentYear),
         getAllUsers()
       ]);
       
-      setSentExchanges(exchangesData.sent);
-      setReceivedExchanges(exchangesData.received);
+      setSentExchanges(exchangesData.sent || []);
+      setReceivedExchanges(exchangesData.received || []);
       setStats(statsData);
-      setMyWeeks(weeksData);
+      
+      // Cargar semanas del usuario actual
+      try {
+        const weeksData = await getUserWeeksForYear(user.uid, currentYear);
+        // Convertir a formato array si es objeto
+        const weeksArray = weeksData.all || [];
+        setMyWeeks(weeksArray);
+      } catch (weeksError) {
+        console.error('Error cargando semanas del usuario:', weeksError);
+        setMyWeeks([]);
+      }
       
       // Filtrar solo usuarios activos con títulos (excluir usuario actual)
       const activeUsers = usersData.filter(u => 
@@ -86,7 +98,7 @@ export default function Exchanges() {
       setOtherUsers(activeUsers);
     } catch (error) {
       console.error('Error cargando datos:', error);
-      alert('Error al cargar intercambios: ' + error.message);
+      setError(error.message || 'Error al cargar los datos de intercambios');
     } finally {
       setLoading(false);
     }
@@ -102,8 +114,10 @@ export default function Exchanges() {
     }
 
     try {
-      const weeks = await getUserWeeksForYear(userId, currentYear);
-      setSelectedUserWeeks(weeks);
+      const weeksData = await getUserWeeksForYear(userId, currentYear);
+      // Convertir a formato array si es objeto
+      const weeksArray = weeksData.all || [];
+      setSelectedUserWeeks(weeksArray);
     } catch (error) {
       console.error('Error cargando semanas del usuario:', error);
       setSelectedUserWeeks([]);
@@ -217,43 +231,30 @@ export default function Exchanges() {
 
     try {
       setSubmitting(true);
-      await cancelExchange(exchangeId, user.uid);
+      await cancelExchange(exchangeId);
       alert('Solicitud cancelada');
       await loadData();
     } catch (error) {
       console.error('Error cancelando intercambio:', error);
-      alert('Error al cancelar: ' + error.message);
+      alert('Error al cancelar intercambio: ' + error.message);
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleViewDetails = (exchange) => {
-    setSelectedExchange(exchange);
-    setShowDetailsModal(true);
-  };
-
   const getStatusBadge = (status) => {
     const badges = {
-      pending: { color: 'bg-yellow-100 text-yellow-800', icon: Clock, label: 'Pendiente' },
-      accepted: { color: 'bg-green-100 text-green-800', icon: CheckCircle, label: 'Aceptado' },
-      rejected: { color: 'bg-red-100 text-red-800', icon: XCircle, label: 'Rechazado' },
-      cancelled: { color: 'bg-gray-100 text-gray-800', icon: XCircle, label: 'Cancelado' }
+      pending: <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm font-medium flex items-center gap-1"><Clock size={14} /> Pendiente</span>,
+      accepted: <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium flex items-center gap-1"><CheckCircle size={14} /> Aceptado</span>,
+      rejected: <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm font-medium flex items-center gap-1"><XCircle size={14} /> Rechazado</span>,
+      cancelled: <span className="px-3 py-1 bg-gray-100 text-gray-800 rounded-full text-sm font-medium flex items-center gap-1"><XCircle size={14} /> Cancelado</span>
     };
-
-    const badge = badges[status] || badges.pending;
-    const Icon = badge.icon;
-
-    return (
-      <span className={`px-3 py-1 rounded-full text-xs font-medium ${badge.color} flex items-center gap-1`}>
-        <Icon size={12} />
-        {badge.label}
-      </span>
-    );
+    return badges[status] || badges.pending;
   };
 
   const getSerieColor = (titleId) => {
-    const serie = titleId?.charAt(0);
+    if (!titleId) return 'bg-gray-200';
+    const serie = titleId.charAt(0);
     return {
       'A': 'bg-serie-a',
       'B': 'bg-serie-b',
@@ -262,11 +263,16 @@ export default function Exchanges() {
     }[serie] || 'bg-gray-200';
   };
 
-  const filteredExchanges = activeTab === 'received' 
-    ? receivedExchanges.filter(e => e.status === 'pending')
-    : activeTab === 'sent'
-    ? sentExchanges.filter(e => e.status === 'pending')
-    : [...sentExchanges, ...receivedExchanges].filter(e => e.status !== 'pending');
+  const displayExchanges = activeTab === 'sent' ? sentExchanges : 
+                           activeTab === 'received' ? receivedExchanges :
+                           [...sentExchanges, ...receivedExchanges];
+
+  const filteredExchanges = displayExchanges.filter(ex => {
+    if (activeTab === 'history') {
+      return ex.status !== 'pending';
+    }
+    return ex.status === 'pending';
+  });
 
   if (loading) {
     return (
@@ -278,92 +284,117 @@ export default function Exchanges() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <Card>
+          <div className="flex flex-col items-center justify-center py-12">
+            <AlertCircle size={64} className="text-red-400 mb-4" />
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">Error al cargar datos</h3>
+            <p className="text-gray-600 mb-4">{error}</p>
+            <Button onClick={loadData}>
+              Intentar de nuevo
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Intercambios</h1>
-          <p className="text-gray-600 mt-1">
-            Gestiona tus solicitudes de intercambio de semanas
-          </p>
+          <p className="text-gray-600 mt-1">Gestiona tus solicitudes de intercambio de semanas</p>
         </div>
-        <Button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2"
-          disabled={myWeeks.length === 0}
-        >
-          <Send size={16} />
+        <Button onClick={() => setShowCreateModal(true)}>
+          <Send size={20} className="mr-2" />
           Nueva solicitud
         </Button>
       </div>
 
       {/* Estadísticas */}
       {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <Card>
-            <div className="text-center">
-              <p className="text-3xl font-bold text-gray-900">{stats.total}</p>
-              <p className="text-gray-600 mt-1">Total</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Pendientes</p>
+                <p className="text-3xl font-bold text-yellow-600">{stats.pending || 0}</p>
+              </div>
+              <Clock size={32} className="text-yellow-400" />
             </div>
           </Card>
 
           <Card>
-            <div className="text-center">
-              <p className="text-3xl font-bold text-yellow-600">{stats.pending}</p>
-              <p className="text-gray-600 mt-1">Pendientes</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Aceptados</p>
+                <p className="text-3xl font-bold text-green-600">{stats.accepted || 0}</p>
+              </div>
+              <CheckCircle size={32} className="text-green-400" />
             </div>
           </Card>
 
           <Card>
-            <div className="text-center">
-              <p className="text-3xl font-bold text-green-600">{stats.accepted}</p>
-              <p className="text-gray-600 mt-1">Aceptados</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Rechazados</p>
+                <p className="text-3xl font-bold text-red-600">{stats.rejected || 0}</p>
+              </div>
+              <XCircle size={32} className="text-red-400" />
             </div>
           </Card>
 
           <Card>
-            <div className="text-center">
-              <p className="text-3xl font-bold text-red-600">{stats.rejected}</p>
-              <p className="text-gray-600 mt-1">Rechazados</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Total</p>
+                <p className="text-3xl font-bold text-gray-900">{stats.total || 0}</p>
+              </div>
+              <ArrowLeftRight size={32} className="text-gray-400" />
             </div>
           </Card>
         </div>
       )}
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6">
-        <button
-          onClick={() => setActiveTab('received')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            activeTab === 'received'
-              ? 'bg-gray-800 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-          }`}
-        >
-          Recibidas ({receivedExchanges.filter(e => e.status === 'pending').length})
-        </button>
-        <button
-          onClick={() => setActiveTab('sent')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            activeTab === 'sent'
-              ? 'bg-gray-800 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-          }`}
-        >
-          Enviadas ({sentExchanges.filter(e => e.status === 'pending').length})
-        </button>
-        <button
-          onClick={() => setActiveTab('history')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            activeTab === 'history'
-              ? 'bg-gray-800 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-          }`}
-        >
-          Historial
-        </button>
-      </div>
+      <Card className="mb-6">
+        <div className="flex gap-4 border-b border-gray-200">
+          <button
+            onClick={() => setActiveTab('received')}
+            className={`px-4 py-3 font-medium transition-colors ${
+              activeTab === 'received'
+                ? 'text-gray-900 border-b-2 border-gray-900'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Recibidas ({receivedExchanges.filter(ex => ex.status === 'pending').length})
+          </button>
+          <button
+            onClick={() => setActiveTab('sent')}
+            className={`px-4 py-3 font-medium transition-colors ${
+              activeTab === 'sent'
+                ? 'text-gray-900 border-b-2 border-gray-900'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Enviadas ({sentExchanges.filter(ex => ex.status === 'pending').length})
+          </button>
+          <button
+            onClick={() => setActiveTab('history')}
+            className={`px-4 py-3 font-medium transition-colors ${
+              activeTab === 'history'
+                ? 'text-gray-900 border-b-2 border-gray-900'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Historial
+          </button>
+        </div>
+      </Card>
 
       {/* Lista de intercambios */}
       <Card>
@@ -371,9 +402,7 @@ export default function Exchanges() {
           <div className="text-center py-12">
             <ArrowLeftRight size={64} className="mx-auto text-gray-300 mb-4" />
             <p className="text-gray-500">
-              {activeTab === 'received' && 'No tienes solicitudes recibidas pendientes'}
-              {activeTab === 'sent' && 'No tienes solicitudes enviadas pendientes'}
-              {activeTab === 'history' && 'No tienes historial de intercambios'}
+              {activeTab === 'history' ? 'No hay intercambios en el historial' : 'No hay solicitudes pendientes'}
             </p>
           </div>
         ) : (
@@ -381,82 +410,104 @@ export default function Exchanges() {
             {filteredExchanges.map((exchange) => (
               <div
                 key={exchange.id}
-                className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                className="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors"
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-3">
-                      {getStatusBadge(exchange.status)}
-                      <span className="text-sm text-gray-500">
-                        {new Date(exchange.createdAt?.seconds * 1000).toLocaleDateString('es-ES')}
-                      </span>
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <User size={20} className="text-gray-400" />
+                    <div>
+                      <p className="font-medium text-gray-900">
+                        {activeTab === 'sent' ? exchange.toUserName : exchange.fromUserName}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {new Date(exchange.createdAt?.seconds * 1000 || Date.now()).toLocaleDateString('es-ES', {
+                          day: 'numeric',
+                          month: 'long',
+                          year: 'numeric'
+                        })}
+                      </p>
                     </div>
+                  </div>
+                  {getStatusBadge(exchange.status)}
+                </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      {/* Tu semana / Su semana */}
-                      <div>
-                        <p className="text-xs text-gray-500 mb-2">
-                          {activeTab === 'received' ? 'Ofrece' : 'Ofreces'}
-                        </p>
-                        <div className={`${getSerieColor(exchange.fromWeek.titleId)} rounded-lg p-3`}>
-                          <p className="font-bold text-gray-900">
-                            Semana {exchange.fromWeek.weekNumber}
-                          </p>
-                          <p className="text-sm text-gray-700">
-                            {exchange.fromWeek.titleId}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-center">
-                        <ArrowLeftRight className="text-gray-400" size={24} />
-                      </div>
-
-                      <div>
-                        <p className="text-xs text-gray-500 mb-2">
-                          {activeTab === 'received' ? 'Por tu' : 'Por'}
-                        </p>
-                        <div className={`${getSerieColor(exchange.toWeek.titleId)} rounded-lg p-3`}>
-                          <p className="font-bold text-gray-900">
-                            Semana {exchange.toWeek.weekNumber}
-                          </p>
-                          <p className="text-sm text-gray-700">
-                            {exchange.toWeek.titleId}
-                          </p>
-                        </div>
-                      </div>
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <p className="text-xs text-gray-500 mb-2">
+                      {activeTab === 'received' ? 'Ofrece' : 'Ofreces'}
+                    </p>
+                    <div className={`${getSerieColor(exchange.fromWeek.titleId)} rounded-lg p-3`}>
+                      <p className="text-lg font-bold text-gray-900">
+                        Semana {exchange.fromWeek.weekNumber}
+                      </p>
+                      <p className="text-sm text-gray-700">{exchange.fromWeek.titleId}</p>
                     </div>
-
-                    {exchange.message && (
-                      <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                        <p className="text-sm text-gray-700 flex items-start gap-2">
-                          <MessageSquare size={16} className="text-gray-400 mt-0.5" />
-                          {exchange.message}
-                        </p>
-                      </div>
-                    )}
                   </div>
 
-                  <div className="ml-4 flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleViewDetails(exchange)}
-                    >
-                      Ver detalles
-                    </Button>
-                    
-                    {activeTab === 'sent' && exchange.status === 'pending' && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-2">
+                      {activeTab === 'received' ? 'Solicita' : 'Solicitas'}
+                    </p>
+                    <div className={`${getSerieColor(exchange.toWeek.titleId)} rounded-lg p-3`}>
+                      <p className="text-lg font-bold text-gray-900">
+                        Semana {exchange.toWeek.weekNumber}
+                      </p>
+                      <p className="text-sm text-gray-700">{exchange.toWeek.titleId}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {exchange.message && (
+                  <div className="bg-gray-50 rounded-lg p-3 mb-4">
+                    <p className="text-sm text-gray-600 flex items-start gap-2">
+                      <MessageSquare size={16} className="mt-0.5 flex-shrink-0" />
+                      {exchange.message}
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedExchange(exchange);
+                      setShowDetailsModal(true);
+                    }}
+                  >
+                    Ver detalles
+                  </Button>
+                  
+                  {activeTab === 'received' && exchange.status === 'pending' && (
+                    <>
+                      <Button
+                        size="sm"
+                        onClick={() => handleAccept(exchange.id)}
+                        disabled={submitting}
+                      >
+                        Aceptar
+                      </Button>
                       <Button
                         variant="danger"
                         size="sm"
-                        onClick={() => handleCancel(exchange.id)}
+                        onClick={() => handleReject(exchange.id)}
                         disabled={submitting}
                       >
-                        Cancelar
+                        Rechazar
                       </Button>
-                    )}
-                  </div>
+                    </>
+                  )}
+                  
+                  {activeTab === 'sent' && exchange.status === 'pending' && (
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => handleCancel(exchange.id)}
+                      disabled={submitting}
+                    >
+                      Cancelar
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}
@@ -489,7 +540,7 @@ export default function Exchanges() {
               <option value="">Selecciona una semana</option>
               {myWeeks.map((week, idx) => (
                 <option key={idx} value={`${week.titleId}-${week.weekNumber}`}>
-                  Semana {week.weekNumber} - {week.titleId}
+                  Semana {week.weekNumber} - {week.titleId} {week.type === 'special' && '⭐'}
                 </option>
               ))}
             </select>
@@ -521,7 +572,9 @@ export default function Exchanges() {
                 Semana que deseas
               </label>
               {selectedUserWeeks.length === 0 ? (
-                <p className="text-sm text-gray-500">Este usuario no tiene semanas disponibles</p>
+                <p className="text-sm text-gray-500 py-2">
+                  Este usuario no tiene semanas disponibles
+                </p>
               ) : (
                 <select
                   value={createForm.targetWeek}
@@ -531,7 +584,7 @@ export default function Exchanges() {
                   <option value="">Selecciona una semana</option>
                   {selectedUserWeeks.map((week, idx) => (
                     <option key={idx} value={`${week.titleId}-${week.weekNumber}`}>
-                      Semana {week.weekNumber} - {week.titleId}
+                      Semana {week.weekNumber} - {week.titleId} {week.type === 'special' && '⭐'}
                     </option>
                   ))}
                 </select>
@@ -547,7 +600,7 @@ export default function Exchanges() {
             <textarea
               value={createForm.message}
               onChange={(e) => setCreateForm({ ...createForm, message: e.target.value })}
-              placeholder="Ej: Me interesa tu semana, ¿podríamos hacer el intercambio?"
+              placeholder="Agrega un mensaje para el usuario..."
               rows={3}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none resize-none"
             />
@@ -607,7 +660,7 @@ export default function Exchanges() {
 
               <div>
                 <p className="text-sm text-gray-500 mb-2">
-                  {activeTab === 'received' ? 'Por tu semana' : 'Por'}
+                  {activeTab === 'received' ? 'Usuario solicita' : 'Solicitas'}
                 </p>
                 <div className={`${getSerieColor(selectedExchange.toWeek.titleId)} rounded-lg p-4`}>
                   <p className="text-2xl font-bold text-gray-900">
@@ -621,31 +674,39 @@ export default function Exchanges() {
             </div>
 
             {selectedExchange.message && (
-              <div>
-                <p className="text-sm font-medium text-gray-700 mb-2">Mensaje</p>
-                <div className="p-3 bg-gray-50 rounded-lg">
-                  <p className="text-sm text-gray-700">{selectedExchange.message}</p>
-                </div>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-sm font-medium text-gray-700 mb-2">Mensaje:</p>
+                <p className="text-gray-900">{selectedExchange.message}</p>
               </div>
             )}
 
             <div className="text-sm text-gray-500">
-              <p>Enviado: {new Date(selectedExchange.createdAt?.seconds * 1000).toLocaleString('es-ES')}</p>
+              <p>Creado: {new Date(selectedExchange.createdAt?.seconds * 1000 || Date.now()).toLocaleDateString('es-ES', {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              })}</p>
               {selectedExchange.resolvedAt && (
-                <p>Resuelto: {new Date(selectedExchange.resolvedAt?.seconds * 1000).toLocaleString('es-ES')}</p>
+                <p>Resuelto: {new Date(selectedExchange.resolvedAt.seconds * 1000).toLocaleDateString('es-ES', {
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}</p>
               )}
             </div>
 
-            {/* Acciones */}
             {activeTab === 'received' && selectedExchange.status === 'pending' && (
-              <div className="flex gap-2 pt-4 border-t">
+              <div className="flex gap-2 pt-4">
                 <Button
                   variant="danger"
                   onClick={() => handleReject(selectedExchange.id)}
                   disabled={submitting}
                   className="flex-1"
                 >
-                  <XCircle size={16} />
                   Rechazar
                 </Button>
                 <Button
@@ -653,7 +714,6 @@ export default function Exchanges() {
                   disabled={submitting}
                   className="flex-1"
                 >
-                  <CheckCircle size={16} />
                   Aceptar
                 </Button>
               </div>

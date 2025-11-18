@@ -8,7 +8,7 @@ import {
   orderBy
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import { obtenerSemanasEspecialesDelAno, NOMBRES_SEMANAS_ESPECIALES } from '../utils/specialWeeks';
+import { obtenerSemanasEspecialesDelAno, NOMBRES_SEMANAS_ESPECIALES } from '../utils/specialweeks';
 
 /**
  * Obtener todos los títulos
