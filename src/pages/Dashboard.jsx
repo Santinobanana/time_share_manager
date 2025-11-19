@@ -33,24 +33,58 @@ export default function Dashboard() {
 
       // Cargar semanas del año actual
       const weeksData = await getUserWeeksForYear(user.uid, currentYear);
-      setUserWeeks(weeksData);
+      
+      // ✅ FIX: Manejar diferentes formatos de weeksData
+      if (weeksData) {
+        // Si viene como objeto con propiedades 'regular', 'special', 'all'
+        if (weeksData.all && Array.isArray(weeksData.all)) {
+          setUserWeeks(weeksData.all);
+        } 
+        // Si viene como array directamente
+        else if (Array.isArray(weeksData)) {
+          setUserWeeks(weeksData);
+        }
+        // Si viene como objeto sin 'all'
+        else if (typeof weeksData === 'object') {
+          // Intentar extraer arrays
+          const allWeeks = [
+            ...(weeksData.regular || []),
+            ...(weeksData.special || [])
+          ];
+          setUserWeeks(allWeeks);
+        }
+        else {
+          console.warn('Formato de weeksData no reconocido:', weeksData);
+          setUserWeeks([]);
+        }
+      } else {
+        setUserWeeks([]);
+      }
     } catch (error) {
       console.error('Error cargando datos del usuario:', error);
+      setUserWeeks([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Calcular próxima semana (simplificado para esta versión)
+  // ✅ FIX: Calcular próxima semana con validación robusta
   const getNextWeek = () => {
-    if (userWeeks.length === 0) return null;
+    // Validar que userWeeks existe y es array
+    if (!userWeeks || !Array.isArray(userWeeks) || userWeeks.length === 0) {
+      return null;
+    }
     
-    // Por ahora retornamos la primera semana
-    // En una versión completa, calcularíamos cuál es la próxima según la fecha actual
+    // Validar que la primera semana tiene los campos necesarios
     const firstWeek = userWeeks[0];
+    if (!firstWeek || typeof firstWeek.weekNumber === 'undefined') {
+      console.warn('Primera semana no tiene formato válido:', firstWeek);
+      return null;
+    }
+    
     return {
       weekNumber: firstWeek.weekNumber,
-      title: firstWeek.titleId,
+      title: firstWeek.titleId || 'N/A',
       daysUntil: '...' // Cálculo de días pendiente
     };
   };
@@ -58,13 +92,17 @@ export default function Dashboard() {
   const nextWeek = getNextWeek();
 
   const getSerieColor = (title) => {
-    const serie = title?.charAt(0) || title?.serie;
+    // Manejar diferentes formatos de title
+    const serieChar = typeof title === 'string' 
+      ? title.charAt(0) 
+      : title?.serie || (title?.titleId ? title.titleId.charAt(0) : null);
+    
     return {
       'A': 'bg-serie-a',
       'B': 'bg-serie-b',
       'C': 'bg-serie-c',
       'D': 'bg-serie-d'
-    }[serie] || 'bg-gray-200';
+    }[serieChar] || 'bg-gray-200';
   };
 
   if (loading) {
@@ -171,38 +209,54 @@ export default function Dashboard() {
             {/* Lista de semanas */}
             <Card 
               title={`Tus semanas en ${currentYear}`} 
-              subtitle={`${userWeeks.length} semanas asignadas`}
+              subtitle={`${userWeeks.length} semana${userWeeks.length !== 1 ? 's' : ''} asignada${userWeeks.length !== 1 ? 's' : ''}`}
             >
               {userWeeks.length === 0 ? (
                 <div className="text-center py-8">
                   <p className="text-gray-500">No hay semanas asignadas para este año</p>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-3 max-h-96 overflow-y-auto">
                   {userWeeks.map((week, index) => {
-                    const colorClass = getSerieColor(week.titleId);
+                    // ✅ FIX: Validar que week tiene los campos necesarios
+                    if (!week || typeof week.weekNumber === 'undefined') {
+                      console.warn('Semana inválida en índice', index, week);
+                      return null;
+                    }
+
+                    const colorClass = getSerieColor(week.titleId || week);
+                    const isSpecial = week.type === 'special';
                     
                     return (
                       <div
-                        key={index}
-                        className={`${colorClass} rounded-lg p-4 flex items-center justify-between`}
+                        key={`${week.titleId}-${week.weekNumber}-${index}`}
+                        className={`${colorClass} rounded-lg p-4 flex items-center justify-between ${
+                          isSpecial ? 'ring-2 ring-orange-400' : ''
+                        }`}
                       >
                         <div>
-                          <p className="font-semibold text-gray-900">
-                            Semana {week.weekNumber}
-                          </p>
-                          <p className="text-sm text-gray-700">
-                            Título: {week.titleId}
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-gray-900">
+                              Semana {week.weekNumber}
+                            </p>
+                            {isSpecial && (
+                              <span className="px-2 py-0.5 bg-orange-500 text-white text-xs font-bold rounded">
+                                VIP: {week.specialName || week.specialType}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-700 mt-1">
+                            Título: {week.titleId || 'N/A'}
                           </p>
                         </div>
                         <div className="text-right">
-                          <p className="text-sm font-medium text-gray-900">
-                            {week.titleId}
+                          <p className="text-xs text-gray-600">
+                            {isSpecial ? '⭐ Especial' : 'Regular'}
                           </p>
                         </div>
                       </div>
                     );
-                  })}
+                  }).filter(Boolean)} {/* Filtrar nulls */}
                 </div>
               )}
             </Card>
@@ -215,7 +269,7 @@ export default function Dashboard() {
                 <p className="text-3xl font-bold text-gray-900">
                   {userTitles.length}
                 </p>
-                <p className="text-gray-600 mt-1">Títulos en propiedad</p>
+                <p className="text-gray-600 mt-1">Título{userTitles.length !== 1 ? 's' : ''} en propiedad</p>
               </div>
             </Card>
 

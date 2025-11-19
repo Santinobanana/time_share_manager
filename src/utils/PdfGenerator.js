@@ -1,5 +1,7 @@
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import { applyPlugin } from 'jspdf-autotable';
+applyPlugin(jsPDF);
 import { format, startOfYear, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { 

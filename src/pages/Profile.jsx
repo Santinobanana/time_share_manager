@@ -47,14 +47,33 @@ export default function Profile() {
     }
   };
 
+  // ✅ FIX: Validación robusta de getSerieColor
   const getSerieColor = (title) => {
-    const serie = title?.charAt(0) || title?.serie;
+    // Manejar diferentes tipos de entrada
+    let serieChar = null;
+    
+    if (typeof title === 'string') {
+      // Si es string (ej: "C-1-1")
+      serieChar = title.charAt(0);
+    } else if (title && typeof title === 'object') {
+      // Si es objeto, buscar en diferentes campos posibles
+      serieChar = title.serie || 
+                  (title.id ? title.id.charAt(0) : null) ||
+                  (title.titleId ? title.titleId.charAt(0) : null);
+    }
+    
+    // Si no se pudo determinar, usar default
+    if (!serieChar) {
+      console.warn('No se pudo determinar serie de:', title);
+      return 'bg-gray-200';
+    }
+    
     return {
       'A': 'bg-serie-a',
       'B': 'bg-serie-b',
       'C': 'bg-serie-c',
       'D': 'bg-serie-d'
-    }[serie] || 'bg-gray-200';
+    }[serieChar] || 'bg-gray-200';
   };
 
   const handleEditToggle = () => {
@@ -264,19 +283,27 @@ export default function Profile() {
               </div>
             ) : (
               <div className="space-y-3">
-                {userTitles.map((title) => (
-                  <div
-                    key={title.id}
-                    className={`${getSerieColor(title)} rounded-lg p-3`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Home size={18} />
-                        <span className="font-bold">{title.id}</span>
+                {userTitles.map((title) => {
+                  // ✅ Validar que title existe antes de procesarlo
+                  if (!title) {
+                    console.warn('Título null o undefined en lista');
+                    return null;
+                  }
+
+                  return (
+                    <div
+                      key={title.id}
+                      className={`${getSerieColor(title)} rounded-lg p-3`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Home size={18} />
+                          <span className="font-bold">{title.id}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                }).filter(Boolean)} {/* Filtrar nulls */}
               </div>
             )}
           </Card>
@@ -286,7 +313,7 @@ export default function Profile() {
             <Card>
               <h3 className="font-semibold text-gray-900 mb-3">Calendario completo</h3>
               <p className="text-sm text-gray-600 mb-4">
-                Descarga el calendario de todos tus títulos con información de los próximos 48 años (2027-2074)
+                Descarga el calendario de todos tus títulos con información de los próximos 74 años (2027-2100)
               </p>
               <PDFDownloadButton
                 data={userTitles}

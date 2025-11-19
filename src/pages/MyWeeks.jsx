@@ -38,7 +38,7 @@ export default function MyWeeks() {
       ]);
 
       setUserTitles(titlesData);
-      setUserWeeks(weeksData);
+      setUserWeeks(weeksData.all || []);
     } catch (error) {
       console.error('Error cargando semanas:', error);
     } finally {
