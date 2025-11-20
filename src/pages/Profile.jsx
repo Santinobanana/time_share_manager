@@ -5,6 +5,8 @@ import Button from '../components/common/Button';
 import Input from '../components/common/Input';
 import Modal from '../components/common/Modal';
 import PDFDownloadButton from '../components/common/PDFDownloadButton';
+import TitleCalendarModal from '../components/common/Titlecalendarmodal';
+import { getTitleById } from '../services/titleService';
 import { User, Mail, Phone, Key, Calendar, Home, Edit, Save, X, FileDown } from 'lucide-react';
 import { updateUser } from '../services/userService';
 import { getTitlesByUser } from '../services/titleService';
@@ -27,6 +29,8 @@ export default function Profile() {
     confirmPassword: ''
   });
   const [errors, setErrors] = useState({});
+  const [showCalendarModal, setShowCalendarModal] = useState(false);
+  const [selectedTitleForCalendar, setSelectedTitleForCalendar] = useState(null);
 
   useEffect(() => {
     if (user) {
@@ -46,6 +50,18 @@ export default function Profile() {
       console.error('Error cargando títulos:', error);
     }
   };
+
+  const handleViewFullCalendar = async (titleId) => {
+  try {
+    // Obtener datos completos del título desde Firestore
+    const titleData = await getTitleById(titleId);
+    setSelectedTitleForCalendar(titleData);
+    setShowCalendarModal(true);
+  } catch (error) {
+    console.error('Error cargando título completo:', error);
+    alert('Error al cargar el calendario del título');
+  }
+};
 
   // ✅ FIX: Validación robusta de getSerieColor
   const getSerieColor = (title) => {
@@ -266,47 +282,49 @@ export default function Profile() {
 
         {/* Sidebar - Títulos */}
         <div className="space-y-6">
-          <Card>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-gray-900">Mis Títulos</h2>
-              <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm font-medium">
-                {userTitles.length}
-              </span>
+        <Card>
+          <h3 className="font-semibold text-gray-900 mb-3">Mis títulos</h3>
+          {userTitles.length === 0 ? (
+            <div className="text-center py-8">
+              <Home size={48} className="mx-auto text-gray-300 mb-3" />
+              <p className="text-gray-500 text-sm">
+                Aún no tienes títulos asignados
+              </p>
             </div>
+          ) : (
+            <div className="space-y-3">
+              {userTitles.map((title) => {
+                if (!title) {
+                  return null;
+                }
 
-            {userTitles.length === 0 ? (
-              <div className="text-center py-8">
-                <Home size={48} className="mx-auto text-gray-300 mb-3" />
-                <p className="text-gray-500 text-sm">
-                  Aún no tienes títulos asignados
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {userTitles.map((title) => {
-                  // ✅ Validar que title existe antes de procesarlo
-                  if (!title) {
-                    console.warn('Título null o undefined en lista');
-                    return null;
-                  }
-
-                  return (
-                    <div
-                      key={title.id}
-                      className={`${getSerieColor(title)} rounded-lg p-3`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Home size={18} />
-                          <span className="font-bold">{title.id}</span>
-                        </div>
+                return (
+                  <div
+                    key={title.id}
+                    className={`${getSerieColor(title)} rounded-lg p-3`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Home size={18} />
+                        <span className="font-bold">{title.id}</span>
                       </div>
+                      
+                      {/* NUEVO: Botón para ver calendario completo */}
+                      <button
+                        onClick={() => handleViewFullCalendar(title.id)}
+                        className="px-3 py-1.5 text-sm bg-white/50 hover:bg-white border border-gray-300 rounded-md transition-colors flex items-center gap-2"
+                        title="Ver calendario completo (74 años)"
+                      >
+                        <Calendar size={14} />
+                        <span className="hidden sm:inline">Ver Calendario</span>
+                      </button>
                     </div>
-                  );
-                }).filter(Boolean)} {/* Filtrar nulls */}
-              </div>
-            )}
-          </Card>
+                  </div>
+                );
+              }).filter(Boolean)}
+            </div>
+          )}
+        </Card>
 
           {/* Botón descargar calendario */}
           {userTitles.length > 0 && (
@@ -408,6 +426,13 @@ export default function Profile() {
           </div>
         </div>
       </Modal>
+      {/* Modal de calendario completo */}
+    <TitleCalendarModal
+      isOpen={showCalendarModal}
+      onClose={() => setShowCalendarModal(false)}
+      title={selectedTitleForCalendar}
+      userName={user?.name}
+    />
     </div>
   );
 }

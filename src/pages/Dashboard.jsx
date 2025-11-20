@@ -1,21 +1,26 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Card from '../components/common/Card';
+import WeeksCalendar from '../components/dashboard/WeeksCalendar';
 import { Calendar, Home, RefreshCw } from 'lucide-react';
 import { getTitlesByUser, getUserWeeksForYear } from '../services/titleService';
+import { addDays, startOfYear, format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 export default function Dashboard() {
   const { user } = useAuth();
   const [userTitles, setUserTitles] = useState([]);
   const [userWeeks, setUserWeeks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const currentYear = 2027;
+  const [selectedYear, setSelectedYear] = useState(2027);
+
+  const years = [2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035];
 
   useEffect(() => {
     if (user) {
       loadUserData();
     }
-  }, [user]);
+  }, [user, selectedYear]);
 
   const loadUserData = async () => {
     try {
@@ -27,34 +32,38 @@ export default function Dashboard() {
         return;
       }
 
-      // Cargar títulos del usuario
       const titlesData = await getTitlesByUser(user.uid);
       setUserTitles(titlesData);
 
-      // Cargar semanas del año actual
-      const weeksData = await getUserWeeksForYear(user.uid, currentYear);
+      const weeksData = await getUserWeeksForYear(user.uid, selectedYear);
       
-      // ✅ FIX: Manejar diferentes formatos de weeksData
       if (weeksData) {
-        // Si viene como objeto con propiedades 'regular', 'special', 'all'
         if (weeksData.all && Array.isArray(weeksData.all)) {
-          setUserWeeks(weeksData.all);
-        } 
-        // Si viene como array directamente
-        else if (Array.isArray(weeksData)) {
-          setUserWeeks(weeksData);
-        }
-        // Si viene como objeto sin 'all'
-        else if (typeof weeksData === 'object') {
-          // Intentar extraer arrays
+          // Agregar fechas calculadas
+          const weeksWithDates = weeksData.all.map(week => ({
+            ...week,
+            startDate: getWeekStartDate(selectedYear, week.weekNumber),
+            endDate: getWeekEndDate(selectedYear, week.weekNumber)
+          }));
+          setUserWeeks(weeksWithDates);
+        } else if (Array.isArray(weeksData)) {
+          const weeksWithDates = weeksData.map(week => ({
+            ...week,
+            startDate: getWeekStartDate(selectedYear, week.weekNumber),
+            endDate: getWeekEndDate(selectedYear, week.weekNumber)
+          }));
+          setUserWeeks(weeksWithDates);
+        } else if (typeof weeksData === 'object') {
           const allWeeks = [
             ...(weeksData.regular || []),
             ...(weeksData.special || [])
-          ];
+          ].map(week => ({
+            ...week,
+            startDate: getWeekStartDate(selectedYear, week.weekNumber),
+            endDate: getWeekEndDate(selectedYear, week.weekNumber)
+          }));
           setUserWeeks(allWeeks);
-        }
-        else {
-          console.warn('Formato de weeksData no reconocido:', weeksData);
+        } else {
           setUserWeeks([]);
         }
       } else {
@@ -68,34 +77,47 @@ export default function Dashboard() {
     }
   };
 
-  // ✅ FIX: Calcular próxima semana con validación robusta
+  const getWeekStartDate = (year, weekNumber) => {
+    const firstDayOfYear = startOfYear(new Date(year, 0, 1));
+    const daysToAdd = (weekNumber - 1) * 7;
+    const weekStart = addDays(firstDayOfYear, daysToAdd);
+    
+    const dayOfWeek = weekStart.getDay();
+    const daysUntilMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = addDays(weekStart, daysUntilMonday);
+    
+    return format(monday, 'dd/MM/yyyy', { locale: es });
+  };
+
+  const getWeekEndDate = (year, weekNumber) => {
+    const firstDayOfYear = startOfYear(new Date(year, 0, 1));
+    const daysToAdd = (weekNumber - 1) * 7 + 6;
+    const weekEnd = addDays(firstDayOfYear, daysToAdd);
+    
+    const dayOfWeek = weekEnd.getDay();
+    const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+    const sunday = addDays(weekEnd, daysUntilSunday);
+    
+    return format(sunday, 'dd/MM/yyyy', { locale: es });
+  };
+
   const getNextWeek = () => {
-    // Validar que userWeeks existe y es array
     if (!userWeeks || !Array.isArray(userWeeks) || userWeeks.length === 0) {
       return null;
     }
     
-    // Validar que la primera semana tiene los campos necesarios
     const firstWeek = userWeeks[0];
     if (!firstWeek || typeof firstWeek.weekNumber === 'undefined') {
-      console.warn('Primera semana no tiene formato válido:', firstWeek);
       return null;
     }
     
-    return {
-      weekNumber: firstWeek.weekNumber,
-      title: firstWeek.titleId || 'N/A',
-      daysUntil: '...' // Cálculo de días pendiente
-    };
+    return firstWeek;
   };
 
-  const nextWeek = getNextWeek();
-
   const getSerieColor = (title) => {
-    // Manejar diferentes formatos de title
     const serieChar = typeof title === 'string' 
       ? title.charAt(0) 
-      : title?.serie || (title?.titleId ? title.titleId.charAt(0) : null);
+      : title?.serie || title?.id?.charAt(0);
     
     return {
       'A': 'bg-serie-a',
@@ -104,6 +126,8 @@ export default function Dashboard() {
       'D': 'bg-serie-d'
     }[serieChar] || 'bg-gray-200';
   };
+
+  const nextWeek = getNextWeek();
 
   if (loading) {
     return (
@@ -128,7 +152,6 @@ export default function Dashboard() {
         </p>
       </div>
 
-      {/* Si no tiene títulos */}
       {userTitles.length === 0 ? (
         <Card>
           <div className="text-center py-12">
@@ -143,7 +166,7 @@ export default function Dashboard() {
         </Card>
       ) : (
         <>
-          {/* Próxima semana - Card destacada */}
+          {/* Próxima semana */}
           {nextWeek && (
             <Card className="mb-8 bg-gradient-to-r from-gray-700 to-gray-800 text-white border-none">
               <div className="flex items-start justify-between">
@@ -157,58 +180,59 @@ export default function Dashboard() {
                       Semana {nextWeek.weekNumber}
                     </p>
                     <p className="text-lg text-gray-300">
-                      🏠 Título: {nextWeek.title}
+                      🏠 Título: {nextWeek.titleId}
                     </p>
+                    {nextWeek.startDate && (
+                      <p className="text-sm text-gray-300">
+                        📅 {nextWeek.startDate} - {nextWeek.endDate}
+                      </p>
+                    )}
+                    {nextWeek.type === 'special' && (
+                      <p className="text-sm bg-orange-500 inline-block px-3 py-1 rounded-full font-semibold">
+                        ⭐ {nextWeek.specialName || nextWeek.specialType}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="text-right">
                   <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-3">
                     <p className="text-sm text-gray-200">Año</p>
-                    <p className="text-4xl font-bold">{currentYear}</p>
+                    <p className="text-4xl font-bold">{selectedYear}</p>
                   </div>
                 </div>
               </div>
             </Card>
           )}
 
+          {/* Selector de año */}
+          <Card className="mb-6">
+            <div className="flex items-center gap-4">
+              <Calendar className="text-gray-600" size={20} />
+              <label className="font-medium text-gray-700">Ver año:</label>
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="border border-gray-300 rounded-md px-4 py-2 focus:ring-2 focus:ring-gray-500"
+              >
+                {years.map(year => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </div>
+          </Card>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Calendario */}
-            <Card title={`Calendario ${currentYear}`}>
-              <div className="space-y-4">
-                <div className="flex items-center justify-center p-8 bg-gray-50 rounded-lg">
-                  <div className="text-center">
-                    <Calendar size={64} className="mx-auto text-gray-400 mb-4" />
-                    <p className="text-gray-600">
-                      Vista de calendario próximamente
-                    </p>
-                  </div>
-                </div>
-                
-                {/* Leyenda */}
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-serie-a rounded"></div>
-                    <span>Serie A</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-serie-b rounded"></div>
-                    <span>Serie B</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-serie-c rounded"></div>
-                    <span>Serie C</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 bg-serie-d rounded"></div>
-                    <span>Serie D</span>
-                  </div>
-                </div>
-              </div>
+            {/* ✅ CALENDARIO IMPLEMENTADO - Reemplaza el placeholder */}
+            <Card title={`Calendario ${selectedYear}`}>
+              <WeeksCalendar 
+                userWeeks={userWeeks} 
+                currentYear={selectedYear}
+              />
             </Card>
 
             {/* Lista de semanas */}
             <Card 
-              title={`Tus semanas en ${currentYear}`} 
+              title={`Tus semanas en ${selectedYear}`} 
               subtitle={`${userWeeks.length} semana${userWeeks.length !== 1 ? 's' : ''} asignada${userWeeks.length !== 1 ? 's' : ''}`}
             >
               {userWeeks.length === 0 ? (
@@ -218,9 +242,7 @@ export default function Dashboard() {
               ) : (
                 <div className="space-y-3 max-h-96 overflow-y-auto">
                   {userWeeks.map((week, index) => {
-                    // ✅ FIX: Validar que week tiene los campos necesarios
                     if (!week || typeof week.weekNumber === 'undefined') {
-                      console.warn('Semana inválida en índice', index, week);
                       return null;
                     }
 
@@ -248,6 +270,11 @@ export default function Dashboard() {
                           <p className="text-sm text-gray-700 mt-1">
                             Título: {week.titleId || 'N/A'}
                           </p>
+                          {week.startDate && (
+                            <p className="text-xs text-gray-600 mt-1">
+                              📅 {week.startDate} - {week.endDate}
+                            </p>
+                          )}
                         </div>
                         <div className="text-right">
                           <p className="text-xs text-gray-600">
@@ -256,7 +283,7 @@ export default function Dashboard() {
                         </div>
                       </div>
                     );
-                  }).filter(Boolean)} {/* Filtrar nulls */}
+                  }).filter(Boolean)}
                 </div>
               )}
             </Card>

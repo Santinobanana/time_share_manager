@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Card from '../components/common/Card';
 import Button from '../components/common/Button';
-import { Calendar, Download, Filter, RefreshCw } from 'lucide-react';
+import { Calendar, Download, Filter, RefreshCw, FileText, X } from 'lucide-react';
 import { getTitlesByUser, getUserWeeksForYear } from '../services/titleService';
+import { addDays, startOfYear, format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 export default function MyWeeks() {
   const { user } = useAuth();
@@ -11,9 +13,11 @@ export default function MyWeeks() {
   const [userWeeks, setUserWeeks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedYear, setSelectedYear] = useState(2027);
-  const [filterType, setFilterType] = useState('all'); // all, regular, special
+  const [filterType, setFilterType] = useState('all');
+  const [selectedWeek, setSelectedWeek] = useState(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
 
-  const years = Array.from({ length: 10 }, (_, i) => 2027 + i); // 2027-2036
+  const years = Array.from({ length: 10 }, (_, i) => 2027 + i);
 
   useEffect(() => {
     if (user) {
@@ -31,7 +35,6 @@ export default function MyWeeks() {
         return;
       }
 
-      // Cargar títulos y semanas
       const [titlesData, weeksData] = await Promise.all([
         getTitlesByUser(user.uid),
         getUserWeeksForYear(user.uid, selectedYear)
@@ -39,13 +42,22 @@ export default function MyWeeks() {
 
       setUserTitles(titlesData);
       
-      // ✅ FIX: Extraer el array 'all' que contiene regulares + especiales
       if (weeksData && weeksData.all && Array.isArray(weeksData.all)) {
-        setUserWeeks(weeksData.all);
+        // Agregar fechas a cada semana
+        const weeksWithDates = weeksData.all.map(week => ({
+          ...week,
+          startDate: getWeekStartDate(selectedYear, week.weekNumber),
+          endDate: getWeekEndDate(selectedYear, week.weekNumber)
+        }));
+        setUserWeeks(weeksWithDates);
       } else if (Array.isArray(weeksData)) {
-        setUserWeeks(weeksData);
+        const weeksWithDates = weeksData.map(week => ({
+          ...week,
+          startDate: getWeekStartDate(selectedYear, week.weekNumber),
+          endDate: getWeekEndDate(selectedYear, week.weekNumber)
+        }));
+        setUserWeeks(weeksWithDates);
       } else {
-        console.warn('Formato de weeksData no esperado:', weeksData);
         setUserWeeks([]);
       }
     } catch (error) {
@@ -54,6 +66,36 @@ export default function MyWeeks() {
     } finally {
       setLoading(false);
     }
+  };
+
+  /**
+   * Calcular fecha de inicio de semana (Lunes)
+   */
+  const getWeekStartDate = (year, weekNumber) => {
+    const firstDayOfYear = startOfYear(new Date(year, 0, 1));
+    const daysToAdd = (weekNumber - 1) * 7;
+    const weekStart = addDays(firstDayOfYear, daysToAdd);
+    
+    const dayOfWeek = weekStart.getDay();
+    const daysUntilMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = addDays(weekStart, daysUntilMonday);
+    
+    return format(monday, 'dd/MM/yyyy', { locale: es });
+  };
+
+  /**
+   * Calcular fecha de fin de semana (Domingo)
+   */
+  const getWeekEndDate = (year, weekNumber) => {
+    const firstDayOfYear = startOfYear(new Date(year, 0, 1));
+    const daysToAdd = (weekNumber - 1) * 7 + 6;
+    const weekEnd = addDays(firstDayOfYear, daysToAdd);
+    
+    const dayOfWeek = weekEnd.getDay();
+    const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+    const sunday = addDays(weekEnd, daysUntilSunday);
+    
+    return format(sunday, 'dd/MM/yyyy', { locale: es });
   };
 
   const getSerieColor = (titleId) => {
@@ -71,7 +113,11 @@ export default function MyWeeks() {
     alert('Función de exportación próximamente');
   };
 
-  // ✅ FIX: Filtrar por tipo (all, regular, special)
+  const handleWeekClick = (week) => {
+    setSelectedWeek(week);
+    setShowDetailsModal(true);
+  };
+
   const filteredWeeks = userWeeks.filter(week => {
     if (filterType === 'all') return true;
     if (filterType === 'regular') return week.type === 'regular';
@@ -79,7 +125,6 @@ export default function MyWeeks() {
     return true;
   });
 
-  // Contar semanas por tipo
   const regularCount = userWeeks.filter(w => w.type === 'regular').length;
   const specialCount = userWeeks.filter(w => w.type === 'special').length;
 
@@ -103,7 +148,6 @@ export default function MyWeeks() {
         </p>
       </div>
 
-      {/* Si no tiene títulos */}
       {userTitles.length === 0 ? (
         <Card>
           <div className="text-center py-12">
@@ -118,17 +162,16 @@ export default function MyWeeks() {
         </Card>
       ) : (
         <>
-          {/* Controles y Filtros */}
+          {/* Controles */}
           <Card className="mb-6">
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-              {/* Selector de año */}
               <div className="flex items-center gap-3">
                 <Calendar size={20} className="text-gray-600" />
                 <label className="font-medium text-gray-700">Año:</label>
                 <select
                   value={selectedYear}
                   onChange={(e) => setSelectedYear(Number(e.target.value))}
-                  className="border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-gray-500 focus:border-transparent"
+                  className="border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-gray-500"
                 >
                   {years.map(year => (
                     <option key={year} value={year}>{year}</option>
@@ -136,14 +179,13 @@ export default function MyWeeks() {
                 </select>
               </div>
 
-              {/* Filtro por tipo */}
               <div className="flex items-center gap-3">
                 <Filter size={20} className="text-gray-600" />
                 <label className="font-medium text-gray-700">Tipo:</label>
                 <select
                   value={filterType}
                   onChange={(e) => setFilterType(e.target.value)}
-                  className="border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-gray-500 focus:border-transparent"
+                  className="border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-gray-500"
                 >
                   <option value="all">Todas ({userWeeks.length})</option>
                   <option value="regular">Regulares ({regularCount})</option>
@@ -151,20 +193,14 @@ export default function MyWeeks() {
                 </select>
               </div>
 
-              {/* Botón exportar (deshabilitado por ahora) */}
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handleExport}
-                disabled
-              >
+              <Button variant="secondary" size="sm" onClick={handleExport} disabled>
                 <Download size={16} className="mr-2" />
                 Exportar
               </Button>
             </div>
           </Card>
 
-          {/* Estadísticas rápidas */}
+          {/* Estadísticas */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <Card>
               <div className="text-center">
@@ -192,7 +228,7 @@ export default function MyWeeks() {
             </Card>
           </div>
 
-          {/* Lista de semanas */}
+          {/* Lista de semanas con fechas completas */}
           <Card>
             <div className="mb-4">
               <h2 className="text-xl font-semibold text-gray-900">
@@ -207,113 +243,147 @@ export default function MyWeeks() {
               <div className="text-center py-12">
                 <Calendar size={48} className="mx-auto text-gray-300 mb-3" />
                 <p className="text-gray-500">
-                  No hay semanas {filterType === 'regular' ? 'regulares' : filterType === 'special' ? 'VIP' : ''} para este año
+                  No hay semanas disponibles
                 </p>
               </div>
             ) : (
               <div className="space-y-3">
                 {filteredWeeks.map((week, index) => {
-                  // ✅ Validar semana
-                  if (!week || typeof week.weekNumber === 'undefined') {
-                    console.warn('Semana inválida:', week);
-                    return null;
-                  }
+                  if (!week || typeof week.weekNumber === 'undefined') return null;
 
                   const isSpecial = week.type === 'special';
                   const colorClass = getSerieColor(week.titleId);
 
                   return (
                     <div
-                      key={`${week.titleId}-${week.weekNumber}-${week.type}-${index}`}
-                      className={`${colorClass} rounded-lg p-4 transition-all hover:shadow-md ${
-                        isSpecial ? 'ring-2 ring-orange-500 ring-opacity-50' : ''
+                      key={`${week.titleId}-${week.weekNumber}-${index}`}
+                      onClick={() => handleWeekClick(week)}
+                      className={`${colorClass} rounded-lg p-4 cursor-pointer transition-all hover:shadow-lg ${
+                        isSpecial ? 'ring-2 ring-orange-400' : ''
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex-1">
-                          <div className="flex items-center gap-3">
-                            <p className="text-lg font-bold text-gray-900">
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <span className="text-xl font-bold text-gray-800">
                               Semana {week.weekNumber}
-                            </p>
+                            </span>
                             
-                            {/* ✅ Badge VIP para semanas especiales */}
+                            <span className="text-sm text-gray-700 font-medium">
+                              ({week.startDate} - {week.endDate})
+                            </span>
+                            
                             {isSpecial && (
-                              <span className="px-3 py-1 bg-orange-500 text-white text-sm font-bold rounded-full flex items-center gap-1">
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-orange-500 text-white">
                                 ⭐ VIP: {week.specialName || week.specialType}
                               </span>
                             )}
-                            
-                            {/* Badge de tipo regular */}
                             {!isSpecial && (
-                              <span className="px-2 py-0.5 bg-gray-600 text-white text-xs font-semibold rounded">
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gray-600 text-white">
                                 Regular
                               </span>
                             )}
                           </div>
-                          
-                          <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2 text-sm text-gray-700">
-                            <span className="font-medium">
-                              📍 Título: {week.titleId}
-                            </span>
-                            {week.fecha && (
-                              <span className="text-gray-600">
-                                📅 {week.fecha}
-                              </span>
-                            )}
-                          </div>
+
+                          <p className="text-sm text-gray-700 mt-2">
+                            🎫 Título: <strong>{week.titleId}</strong>
+                          </p>
                         </div>
 
-                        {/* Indicador visual de tipo */}
-                        <div className="flex-shrink-0 ml-4">
-                          {isSpecial ? (
-                            <div className="w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center text-white text-xl">
-                              ⭐
-                            </div>
-                          ) : (
-                            <div className="w-12 h-12 bg-gray-400 rounded-full flex items-center justify-center text-white">
-                              <Calendar size={24} />
-                            </div>
-                          )}
+                        <div className="flex items-center">
+                          <button className="p-2 hover:bg-white/50 rounded-full transition-colors">
+                            <FileText size={20} className="text-gray-600" />
+                          </button>
                         </div>
                       </div>
                     </div>
                   );
-                }).filter(Boolean)}
+                })}
               </div>
             )}
           </Card>
+        </>
+      )}
 
-          {/* Leyenda */}
-          <Card className="mt-6">
-            <h3 className="font-semibold text-gray-900 mb-3">Leyenda</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-serie-a rounded"></div>
-                <span>Serie A</span>
+      {/* Modal de detalles */}
+      {showDetailsModal && selectedWeek && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={() => setShowDetailsModal(false)}
+        >
+          <div 
+            className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b">
+              <h2 className="text-2xl font-bold text-gray-900">
+                Detalles de la Semana
+              </h2>
+              <button
+                onClick={() => setShowDetailsModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            {/* Contenido */}
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-semibold text-gray-600">Título</label>
+                  <p className="text-lg font-bold text-gray-900">{selectedWeek.titleId}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-semibold text-gray-600">Número de Semana</label>
+                  <p className="text-lg font-bold text-gray-900">{selectedWeek.weekNumber}</p>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-serie-b rounded"></div>
-                <span>Serie B</span>
+
+              <div>
+                <label className="text-sm font-semibold text-gray-600">Tipo</label>
+                <p className="text-lg font-bold text-gray-900">
+                  {selectedWeek.type === 'special' 
+                    ? `⭐ VIP: ${selectedWeek.specialName || selectedWeek.specialType}` 
+                    : 'Regular'
+                  }
+                </p>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-serie-c rounded"></div>
-                <span>Serie C</span>
+
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <label className="text-sm font-semibold text-blue-800 block mb-2">
+                  📅 Fechas
+                </label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-gray-600">Inicio (Lunes)</p>
+                    <p className="text-lg font-bold text-blue-900">{selectedWeek.startDate}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-600">Fin (Domingo)</p>
+                    <p className="text-lg font-bold text-blue-900">{selectedWeek.endDate}</p>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 bg-serie-d rounded"></div>
-                <span>Serie D</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 bg-orange-500 text-white text-xs font-bold rounded">⭐ VIP</span>
-                <span>Semana especial</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 bg-gray-600 text-white text-xs font-semibold rounded">Regular</span>
-                <span>Semana regular</span>
+
+              <div>
+                <label className="text-sm font-semibold text-gray-600">Año</label>
+                <p className="text-lg font-bold text-gray-900">{selectedYear}</p>
               </div>
             </div>
-          </Card>
-        </>
+
+            {/* Footer */}
+            <div className="p-6 border-t bg-gray-50">
+              <Button
+                onClick={() => setShowDetailsModal(false)}
+                className="w-full"
+              >
+                Cerrar
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
