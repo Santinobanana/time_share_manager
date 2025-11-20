@@ -5,6 +5,8 @@ import Modal from '../components/common/Modal';
 import { Users, Search, Filter, Calendar, RefreshCw } from 'lucide-react';
 import { getAllUsers } from '../services/userService';
 import { getUserWeeksForYear } from '../services/titleService';
+import { addDays, startOfYear, format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 export default function Availability() {
   const { user } = useAuth();
@@ -16,6 +18,7 @@ export default function Availability() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [selectedUserWeeks, setSelectedUserWeeks] = useState([]);
+  const [loadingWeeks, setLoadingWeeks] = useState(false);
 
   const years = [2027, 2028, 2029, 2030, 2031, 2032, 2033];
 
@@ -46,17 +49,74 @@ export default function Availability() {
     }
   };
 
+  /**
+   * Calcular fecha de inicio de semana (Lunes)
+   */
+  const getWeekStartDate = (year, weekNumber) => {
+    const firstDayOfYear = startOfYear(new Date(year, 0, 1));
+    const daysToAdd = (weekNumber - 1) * 7;
+    const weekStart = addDays(firstDayOfYear, daysToAdd);
+    
+    const dayOfWeek = weekStart.getDay();
+    const daysUntilMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = addDays(weekStart, daysUntilMonday);
+    
+    return format(monday, 'dd/MM/yyyy', { locale: es });
+  };
+
+  /**
+   * Calcular fecha de fin de semana (Domingo)
+   */
+  const getWeekEndDate = (year, weekNumber) => {
+    const firstDayOfYear = startOfYear(new Date(year, 0, 1));
+    const daysToAdd = (weekNumber - 1) * 7 + 6;
+    const weekEnd = addDays(firstDayOfYear, daysToAdd);
+    
+    const dayOfWeek = weekEnd.getDay();
+    const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+    const sunday = addDays(weekEnd, daysUntilSunday);
+    
+    return format(sunday, 'dd/MM/yyyy', { locale: es });
+  };
+
   const handleViewDetails = async (selectedUser) => {
     setSelectedUser(selectedUser);
     setShowDetailsModal(true);
+    setLoadingWeeks(true);
     
     try {
       // Cargar semanas del usuario seleccionado
-      const weeks = await getUserWeeksForYear(selectedUser.uid, selectedYear);
-      setSelectedUserWeeks(weeks);
+      const weeksData = await getUserWeeksForYear(selectedUser.uid, selectedYear);
+      
+      // Manejar diferentes formatos de respuesta y agregar fechas
+      let weeks = [];
+      
+      if (weeksData) {
+        if (weeksData.all && Array.isArray(weeksData.all)) {
+          weeks = weeksData.all;
+        } else if (Array.isArray(weeksData)) {
+          weeks = weeksData;
+        } else if (typeof weeksData === 'object') {
+          weeks = [
+            ...(weeksData.regular || []),
+            ...(weeksData.special || [])
+          ];
+        }
+      }
+
+      // Agregar fechas calculadas a cada semana
+      const weeksWithDates = weeks.map(week => ({
+        ...week,
+        startDate: getWeekStartDate(selectedYear, week.weekNumber),
+        endDate: getWeekEndDate(selectedYear, week.weekNumber)
+      }));
+
+      setSelectedUserWeeks(weeksWithDates);
     } catch (error) {
       console.error('Error cargando semanas:', error);
       setSelectedUserWeeks([]);
+    } finally {
+      setLoadingWeeks(false);
     }
   };
 
@@ -227,12 +287,13 @@ export default function Availability() {
         )}
       </Card>
 
-      {/* Modal de detalles */}
+      {/* Modal de detalles CON FECHAS */}
       <Modal
         isOpen={showDetailsModal}
         onClose={() => {
           setShowDetailsModal(false);
           setSelectedUserWeeks([]);
+          setSelectedUser(null);
         }}
         title={`Semanas de ${selectedUser?.name}`}
       >
@@ -253,33 +314,76 @@ export default function Availability() {
               </div>
             </div>
 
-            {/* Semanas del año seleccionado */}
+            {/* Semanas del año seleccionado CON FECHAS */}
             <div>
               <h3 className="font-semibold text-gray-900 mb-2">
                 Semanas en {selectedYear}
               </h3>
               
-              {selectedUserWeeks.length === 0 ? (
-                <p className="text-gray-500 text-sm">Cargando semanas...</p>
+              {loadingWeeks ? (
+                <div className="flex items-center justify-center py-8">
+                  <RefreshCw className="animate-spin text-gray-400" size={24} />
+                  <p className="text-gray-500 text-sm ml-2">Cargando semanas...</p>
+                </div>
+              ) : selectedUserWeeks.length === 0 ? (
+                <p className="text-gray-500 text-sm">
+                  No hay semanas asignadas para este año
+                </p>
               ) : (
                 <div className="space-y-2">
-                  {selectedUserWeeks.map((week, index) => (
-                    <div
-                      key={index}
-                      className={`${getSerieColor(week.titleId)} rounded-lg p-3`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-semibold text-gray-900">
-                            Semana {week.weekNumber}
-                          </p>
+                  {selectedUserWeeks.map((week, index) => {
+                    // Validar que week tiene los campos necesarios
+                    if (!week || typeof week.weekNumber === 'undefined') {
+                      console.warn('Semana inválida:', week);
+                      return null;
+                    }
+
+                    const isSpecial = week.type === 'special';
+                    const colorClass = getSerieColor(week.titleId);
+
+                    return (
+                      <div
+                        key={`${week.titleId}-${week.weekNumber}-${index}`}
+                        className={`${colorClass} rounded-lg p-3 ${
+                          isSpecial ? 'ring-2 ring-orange-400' : ''
+                        }`}
+                      >
+                        <div className="flex flex-col gap-2">
+                          {/* Línea 1: Semana y Badge */}
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <p className="font-bold text-gray-900 text-lg">
+                                Semana {week.weekNumber}
+                              </p>
+                              {isSpecial && (
+                                <span className="px-2 py-0.5 bg-orange-500 text-white text-xs font-bold rounded">
+                                  ⭐ VIP: {week.specialName || week.specialType}
+                                </span>
+                              )}
+                              {!isSpecial && (
+                                <span className="px-2 py-0.5 bg-gray-600 text-white text-xs font-bold rounded">
+                                  Regular
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Línea 2: Fechas */}
+                          <div className="flex items-center gap-2 text-sm text-gray-700">
+                            <Calendar size={14} />
+                            <span className="font-medium">
+                              {week.startDate} - {week.endDate}
+                            </span>
+                          </div>
+
+                          {/* Línea 3: Título */}
                           <p className="text-sm text-gray-700">
-                            {week.titleId}
+                            🎫 Título: <strong>{week.titleId}</strong>
                           </p>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  }).filter(Boolean)}
                 </div>
               )}
             </div>

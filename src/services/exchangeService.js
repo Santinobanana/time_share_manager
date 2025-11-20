@@ -5,6 +5,7 @@ import {
   getDocs, 
   addDoc,
   updateDoc,
+  deleteDoc,
   query,
   where,
   orderBy,
@@ -15,7 +16,8 @@ import {
   notifyNewExchangeRequest,
   notifyExchangeAccepted,
   notifyExchangeRejected,
-  notifyExchangeCancelled
+  notifyExchangeCancelled,
+  notifyAcceptedExchangeCancelled
 } from './notificationService';
 
 /**
@@ -27,13 +29,12 @@ export const createExchange = async (exchangeData) => {
   try {
     const { fromUserId, toUserId, fromWeek, toWeek, message, year } = exchangeData;
 
-    // Crear intercambio
     const exchangeRef = await addDoc(collection(db, 'exchanges'), {
       fromUserId,
       toUserId,
-      fromWeek,  // { titleId, weekNumber }
-      toWeek,    // { titleId, weekNumber }
-      status: 'pending', // pending, accepted, rejected, cancelled
+      fromWeek,
+      toWeek,
+      status: 'pending',
       message: message || '',
       year,
       createdAt: serverTimestamp(),
@@ -43,7 +44,6 @@ export const createExchange = async (exchangeData) => {
 
     console.log('Intercambio creado:', exchangeRef.id);
 
-    // Obtener información de usuarios para notificación
     try {
       const fromUserDoc = await getDoc(doc(db, 'users', fromUserId));
       const toUserDoc = await getDoc(doc(db, 'users', toUserId));
@@ -52,19 +52,18 @@ export const createExchange = async (exchangeData) => {
         const fromUserData = fromUserDoc.data();
         const toUserData = toUserDoc.data();
 
-        // Enviar notificación al usuario que recibe la solicitud
         await notifyNewExchangeRequest({
           toUserEmail: toUserData.email,
           toUserName: toUserData.name,
           fromUserName: fromUserData.name,
           fromWeek,
           toWeek,
-          year
+          year,
+          message
         });
       }
     } catch (emailError) {
       console.error('Error enviando notificación:', emailError);
-      // No lanzar error para no afectar la creación del intercambio
     }
 
     return exchangeRef.id;
@@ -75,13 +74,10 @@ export const createExchange = async (exchangeData) => {
 };
 
 /**
- * Obtener todos los intercambios de un usuario (enviados y recibidos)
- * @param {string} userId 
- * @returns {Promise<Object>} { sent: [], received: [] }
+ * Obtener todos los intercambios de un usuario
  */
 export const getUserExchanges = async (userId) => {
   try {
-    // Intercambios enviados
     const sentQuery = query(
       collection(db, 'exchanges'),
       where('fromUserId', '==', userId),
@@ -93,7 +89,6 @@ export const getUserExchanges = async (userId) => {
       sentExchanges.push({ id: doc.id, ...doc.data() });
     });
 
-    // Intercambios recibidos
     const receivedQuery = query(
       collection(db, 'exchanges'),
       where('toUserId', '==', userId),
@@ -116,9 +111,7 @@ export const getUserExchanges = async (userId) => {
 };
 
 /**
- * Obtener intercambios pendientes de un usuario (solo los recibidos que debe responder)
- * @param {string} userId 
- * @returns {Promise<Array>}
+ * Obtener intercambios pendientes
  */
 export const getPendingExchanges = async (userId) => {
   try {
@@ -145,8 +138,7 @@ export const getPendingExchanges = async (userId) => {
 
 /**
  * Aceptar un intercambio
- * @param {string} exchangeId 
- * @returns {Promise<void>}
+ * ACTUALIZADO: Crea registro en activeExchanges
  */
 export const acceptExchange = async (exchangeId) => {
   try {
@@ -159,15 +151,27 @@ export const acceptExchange = async (exchangeId) => {
     
     const exchangeData = exchangeDoc.data();
     
+    // 1. Actualizar status
     await updateDoc(exchangeRef, {
       status: 'accepted',
       resolvedAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     });
     
+    // 2. Crear registro activo
+    await addDoc(collection(db, 'activeExchanges'), {
+      exchangeId,
+      fromUserId: exchangeData.fromUserId,
+      toUserId: exchangeData.toUserId,
+      fromWeek: exchangeData.fromWeek,
+      toWeek: exchangeData.toWeek,
+      year: exchangeData.year,
+      activatedAt: serverTimestamp()
+    });
+    
     console.log('Intercambio aceptado:', exchangeId);
 
-    // Enviar notificación al usuario que envió la solicitud
+    // 3. Notificar
     try {
       const fromUserDoc = await getDoc(doc(db, 'users', exchangeData.fromUserId));
       const toUserDoc = await getDoc(doc(db, 'users', exchangeData.toUserId));
@@ -196,8 +200,6 @@ export const acceptExchange = async (exchangeId) => {
 
 /**
  * Rechazar un intercambio
- * @param {string} exchangeId 
- * @returns {Promise<void>}
  */
 export const rejectExchange = async (exchangeId) => {
   try {
@@ -218,7 +220,6 @@ export const rejectExchange = async (exchangeId) => {
     
     console.log('Intercambio rechazado:', exchangeId);
 
-    // Enviar notificación al usuario que envió la solicitud
     try {
       const fromUserDoc = await getDoc(doc(db, 'users', exchangeData.fromUserId));
       const toUserDoc = await getDoc(doc(db, 'users', exchangeData.toUserId));
@@ -246,10 +247,7 @@ export const rejectExchange = async (exchangeId) => {
 };
 
 /**
- * Cancelar un intercambio enviado (solo si está pendiente)
- * @param {string} exchangeId 
- * @param {string} userId - ID del usuario que intenta cancelar
- * @returns {Promise<void>}
+ * Cancelar intercambio pendiente
  */
 export const cancelExchange = async (exchangeId, userId) => {
   try {
@@ -262,16 +260,6 @@ export const cancelExchange = async (exchangeId, userId) => {
     
     const exchangeData = exchangeDoc.data();
     
-    // Verificar que el usuario sea quien envió la solicitud
-    if (exchangeData.fromUserId !== userId) {
-      throw new Error('No tienes permiso para cancelar este intercambio');
-    }
-    
-    // Verificar que esté pendiente
-    if (exchangeData.status !== 'pending') {
-      throw new Error('Solo puedes cancelar intercambios pendientes');
-    }
-    
     await updateDoc(exchangeRef, {
       status: 'cancelled',
       resolvedAt: serverTimestamp(),
@@ -280,7 +268,6 @@ export const cancelExchange = async (exchangeId, userId) => {
     
     console.log('Intercambio cancelado:', exchangeId);
 
-    // Enviar notificación al usuario que iba a recibir el intercambio
     try {
       const fromUserDoc = await getDoc(doc(db, 'users', exchangeData.fromUserId));
       const toUserDoc = await getDoc(doc(db, 'users', exchangeData.toUserId));
@@ -308,9 +295,123 @@ export const cancelExchange = async (exchangeId, userId) => {
 };
 
 /**
- * Obtener detalles completos de un intercambio con información de usuarios
- * @param {string} exchangeId 
- * @returns {Promise<Object>}
+ * NUEVA FUNCIÓN: Cancelar intercambio aceptado con reversión
+ */
+export const cancelAcceptedExchange = async (exchangeId, userId) => {
+  try {
+    const exchangeRef = doc(db, 'exchanges', exchangeId);
+    const exchangeDoc = await getDoc(exchangeRef);
+    
+    if (!exchangeDoc.exists()) {
+      throw new Error('Intercambio no encontrado');
+    }
+    
+    const exchangeData = exchangeDoc.data();
+    
+    // Verificar permiso
+    if (exchangeData.fromUserId !== userId && exchangeData.toUserId !== userId) {
+      throw new Error('No tienes permiso para cancelar este intercambio');
+    }
+    
+    // Verificar status
+    if (exchangeData.status !== 'accepted') {
+      throw new Error('Solo puedes cancelar intercambios aceptados');
+    }
+    
+    // 1. Cambiar status a cancelled
+    await updateDoc(exchangeRef, {
+      status: 'cancelled',
+      cancelledAt: serverTimestamp(),
+      cancelledBy: userId,
+      updatedAt: serverTimestamp()
+    });
+    
+    // 2. Eliminar de activeExchanges (reversión)
+    const activeQuery = query(
+      collection(db, 'activeExchanges'),
+      where('exchangeId', '==', exchangeId)
+    );
+    const activeSnapshot = await getDocs(activeQuery);
+    
+    const deletePromises = [];
+    activeSnapshot.forEach(doc => {
+      deletePromises.push(deleteDoc(doc.ref));
+    });
+    await Promise.all(deletePromises);
+    
+    console.log('Intercambio aceptado cancelado y revertido:', exchangeId);
+
+    // 3. Notificar
+    try {
+      const fromUserDoc = await getDoc(doc(db, 'users', exchangeData.fromUserId));
+      const toUserDoc = await getDoc(doc(db, 'users', exchangeData.toUserId));
+
+      if (fromUserDoc.exists() && toUserDoc.exists()) {
+        const fromUserData = fromUserDoc.data();
+        const toUserData = toUserDoc.data();
+        
+        const cancellingUser = userId === exchangeData.fromUserId ? fromUserData : toUserData;
+        const notifiedUser = userId === exchangeData.fromUserId ? toUserData : fromUserData;
+
+        await notifyAcceptedExchangeCancelled({
+          toUserEmail: notifiedUser.email,
+          toUserName: notifiedUser.name,
+          fromUserName: cancellingUser.name,
+          fromWeek: exchangeData.fromWeek,
+          toWeek: exchangeData.toWeek,
+          year: exchangeData.year
+        });
+      }
+    } catch (emailError) {
+      console.error('Error enviando notificación:', emailError);
+    }
+  } catch (error) {
+    console.error('Error cancelando intercambio aceptado:', error);
+    throw error;
+  }
+};
+
+/**
+ * NUEVA FUNCIÓN: Obtener intercambios activos
+ */
+export const getActiveExchanges = async (userId, year) => {
+  try {
+    const q1 = query(
+      collection(db, 'activeExchanges'),
+      where('fromUserId', '==', userId),
+      where('year', '==', year)
+    );
+    
+    const q2 = query(
+      collection(db, 'activeExchanges'),
+      where('toUserId', '==', userId),
+      where('year', '==', year)
+    );
+    
+    const [snapshot1, snapshot2] = await Promise.all([
+      getDocs(q1),
+      getDocs(q2)
+    ]);
+    
+    const activeExchanges = [];
+    
+    snapshot1.forEach(doc => {
+      activeExchanges.push({ id: doc.id, ...doc.data() });
+    });
+    
+    snapshot2.forEach(doc => {
+      activeExchanges.push({ id: doc.id, ...doc.data() });
+    });
+    
+    return activeExchanges;
+  } catch (error) {
+    console.error('Error obteniendo intercambios activos:', error);
+    throw new Error('Error al obtener intercambios activos');
+  }
+};
+
+/**
+ * Obtener detalles de intercambio
  */
 export const getExchangeDetails = async (exchangeId) => {
   try {
@@ -323,7 +424,6 @@ export const getExchangeDetails = async (exchangeId) => {
     
     const exchangeData = exchangeDoc.data();
     
-    // Obtener información de los usuarios
     const fromUserDoc = await getDoc(doc(db, 'users', exchangeData.fromUserId));
     const toUserDoc = await getDoc(doc(db, 'users', exchangeData.toUserId));
     
@@ -348,9 +448,7 @@ export const getExchangeDetails = async (exchangeId) => {
 };
 
 /**
- * Obtener historial de intercambios (aceptados, rechazados, cancelados)
- * @param {string} userId 
- * @returns {Promise<Array>}
+ * Obtener historial
  */
 export const getExchangeHistory = async (userId) => {
   try {
@@ -365,7 +463,6 @@ export const getExchangeHistory = async (userId) => {
     
     querySnapshot.forEach(doc => {
       const data = doc.data();
-      // Solo incluir intercambios donde el usuario participó
       if (data.fromUserId === userId || data.toUserId === userId) {
         exchanges.push({ id: doc.id, ...data });
       }
@@ -379,9 +476,7 @@ export const getExchangeHistory = async (userId) => {
 };
 
 /**
- * Obtener estadísticas de intercambios de un usuario
- * @param {string} userId 
- * @returns {Promise<Object>}
+ * Obtener estadísticas
  */
 export const getExchangeStats = async (userId) => {
   try {
@@ -403,12 +498,7 @@ export const getExchangeStats = async (userId) => {
 };
 
 /**
- * Verificar si ya existe una solicitud de intercambio pendiente entre dos usuarios para las mismas semanas
- * @param {string} fromUserId 
- * @param {string} toUserId 
- * @param {Object} fromWeek 
- * @param {Object} toWeek 
- * @returns {Promise<boolean>}
+ * Verificar duplicados
  */
 export const checkDuplicateExchange = async (fromUserId, toUserId, fromWeek, toWeek) => {
   try {
@@ -421,7 +511,6 @@ export const checkDuplicateExchange = async (fromUserId, toUserId, fromWeek, toW
     
     const querySnapshot = await getDocs(q);
     
-    // Verificar si ya existe una solicitud con las mismas semanas
     let duplicate = false;
     querySnapshot.forEach(doc => {
       const data = doc.data();

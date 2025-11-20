@@ -1,25 +1,28 @@
 import { 
   collection, 
   doc, 
-  getDoc,
   getDocs, 
-  query,
-  where,
-  orderBy
+  getDoc, 
+  query, 
+  where, 
+  updateDoc,
+  orderBy 
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import { obtenerSemanasEspecialesDelAno, NOMBRES_SEMANAS_ESPECIALES } from '../utils/specialweeks';
+import { 
+  obtenerSemanasEspecialesDelAno,
+  NOMBRES_SEMANAS_ESPECIALES 
+} from '../utils/specialWeeks';
 
 /**
  * Obtener todos los títulos
- * @returns {Promise<Array>}
  */
 export const getAllTitles = async () => {
   try {
-    const titlesSnapshot = await getDocs(collection(db, 'titles'));
+    const querySnapshot = await getDocs(collection(db, 'titles'));
     const titles = [];
     
-    titlesSnapshot.forEach(doc => {
+    querySnapshot.forEach((doc) => {
       titles.push({ id: doc.id, ...doc.data() });
     });
     
@@ -31,9 +34,7 @@ export const getAllTitles = async () => {
 };
 
 /**
- * Obtener un título por ID
- * @param {string} titleId 
- * @returns {Promise<Object>}
+ * Obtener título por ID
  */
 export const getTitleById = async (titleId) => {
   try {
@@ -51,24 +52,19 @@ export const getTitleById = async (titleId) => {
 };
 
 /**
- * Obtener títulos por usuario
- * @param {string} userId 
- * @returns {Promise<Array>}
+ * Obtener títulos de un usuario
  */
 export const getTitlesByUser = async (userId) => {
   try {
     const q = query(
       collection(db, 'titles'),
-      where('ownerId', '==', userId),
-      orderBy('serie'),
-      orderBy('subserie'),
-      orderBy('number')
+      where('ownerId', '==', userId)
     );
     
     const querySnapshot = await getDocs(q);
     const titles = [];
     
-    querySnapshot.forEach(doc => {
+    querySnapshot.forEach((doc) => {
       titles.push({ id: doc.id, ...doc.data() });
     });
     
@@ -109,8 +105,41 @@ export const getTitleOwner = async (titleId) => {
 };
 
 /**
- * Obtener títulos disponibles (sin propietario)
- * @returns {Promise<Array>}
+ * Asignar título a un usuario
+ */
+export const assignTitleToUser = async (titleId, userId) => {
+  try {
+    const titleRef = doc(db, 'titles', titleId);
+    await updateDoc(titleRef, {
+      ownerId: userId
+    });
+    
+    console.log(`Título ${titleId} asignado a usuario ${userId}`);
+  } catch (error) {
+    console.error('Error asignando título:', error);
+    throw new Error('Error al asignar el título');
+  }
+};
+
+/**
+ * Remover título de un usuario
+ */
+export const removeTitleFromUser = async (titleId) => {
+  try {
+    const titleRef = doc(db, 'titles', titleId);
+    await updateDoc(titleRef, {
+      ownerId: null
+    });
+    
+    console.log(`Título ${titleId} liberado`);
+  } catch (error) {
+    console.error('Error removiendo título:', error);
+    throw new Error('Error al remover el título');
+  }
+};
+
+/**
+ * Obtener títulos disponibles (sin asignar)
  */
 export const getAvailableTitles = async () => {
   try {
@@ -122,7 +151,7 @@ export const getAvailableTitles = async () => {
     const querySnapshot = await getDocs(q);
     const titles = [];
     
-    querySnapshot.forEach(doc => {
+    querySnapshot.forEach((doc) => {
       titles.push({ id: doc.id, ...doc.data() });
     });
     
@@ -135,7 +164,6 @@ export const getAvailableTitles = async () => {
 
 /**
  * Obtener estadísticas de títulos
- * @returns {Promise<Object>}
  */
 export const getTitleStats = async () => {
   try {
@@ -166,10 +194,7 @@ export const getTitleStats = async () => {
 };
 
 /**
- * Calcular semanas de un título para un año específico (regulares + especiales)
- * @param {string} titleId 
- * @param {number} year 
- * @returns {Promise<Object>}
+ * Calcular semanas de un título para un año específico
  */
 export const getTitleWeeksForYear = async (titleId, year) => {
   try {
@@ -179,10 +204,7 @@ export const getTitleWeeksForYear = async (titleId, year) => {
       throw new Error(`No hay información de semanas para el año ${year}`);
     }
     
-    // Semana regular
     const regularWeek = title.weeksByYear[year];
-    
-    // Semanas especiales
     const specialWeeks = title.specialWeeksByYear?.[year] || [];
     
     return {
@@ -204,10 +226,8 @@ export const getTitleWeeksForYear = async (titleId, year) => {
 };
 
 /**
- * Obtener todas las semanas de un usuario para un año (regulares + especiales)
- * @param {string} userId 
- * @param {number} year 
- * @returns {Promise<Object>} { regular: Array, special: Array }
+ * ACTUALIZADO: Obtener semanas de un usuario para un año
+ * Ahora considera intercambios activos
  */
 export const getUserWeeksForYear = async (userId, year) => {
   try {
@@ -216,6 +236,7 @@ export const getUserWeeksForYear = async (userId, year) => {
     const regularWeeks = [];
     const specialWeeks = [];
     
+    // 1. Obtener semanas originales de los títulos
     titles.forEach(title => {
       // Semana regular
       if (title.weeksByYear && title.weeksByYear[year]) {
@@ -246,6 +267,91 @@ export const getUserWeeksForYear = async (userId, year) => {
       }
     });
     
+    // 2. Obtener intercambios activos para este usuario y año
+    const activeExchangesQuery1 = query(
+      collection(db, 'activeExchanges'),
+      where('fromUserId', '==', userId),
+      where('year', '==', year)
+    );
+    
+    const activeExchangesQuery2 = query(
+      collection(db, 'activeExchanges'),
+      where('toUserId', '==', userId),
+      where('year', '==', year)
+    );
+    
+    const [snapshot1, snapshot2] = await Promise.all([
+      getDocs(activeExchangesQuery1),
+      getDocs(activeExchangesQuery2)
+    ]);
+    
+    const activeExchanges = [];
+    snapshot1.forEach(doc => {
+      activeExchanges.push({ id: doc.id, ...doc.data() });
+    });
+    snapshot2.forEach(doc => {
+      activeExchanges.push({ id: doc.id, ...doc.data() });
+    });
+    
+    // 3. Aplicar intercambios activos
+    activeExchanges.forEach(exchange => {
+      if (exchange.fromUserId === userId) {
+        // Este usuario dio una semana y recibió otra
+        
+        // Remover la semana que dio
+        const indexToRemove = regularWeeks.findIndex(
+          w => w.titleId === exchange.fromWeek.titleId && 
+               w.weekNumber === exchange.fromWeek.weekNumber
+        );
+        if (indexToRemove > -1) {
+          regularWeeks.splice(indexToRemove, 1);
+        }
+        
+        // Agregar la semana que recibió
+        const titleData = titles.find(t => t.id === exchange.toWeek.titleId);
+        if (titleData) {
+          regularWeeks.push({
+            titleId: exchange.toWeek.titleId,
+            serie: titleData.serie,
+            subserie: titleData.subserie,
+            number: titleData.number,
+            weekNumber: exchange.toWeek.weekNumber,
+            type: 'regular',
+            isExchanged: true,
+            exchangeId: exchange.exchangeId
+          });
+        }
+      } else if (exchange.toUserId === userId) {
+        // Este usuario recibió una semana y dio otra
+        
+        // Remover la semana que dio
+        const indexToRemove = regularWeeks.findIndex(
+          w => w.titleId === exchange.toWeek.titleId && 
+               w.weekNumber === exchange.toWeek.weekNumber
+        );
+        if (indexToRemove > -1) {
+          regularWeeks.splice(indexToRemove, 1);
+        }
+        
+        // Agregar la semana que recibió
+        // Necesitamos obtener info del título
+        const fromTitleDoc = getDoc(doc(db, 'titles', exchange.fromWeek.titleId));
+        if (fromTitleDoc.exists()) {
+          const fromTitleData = fromTitleDoc.data();
+          regularWeeks.push({
+            titleId: exchange.fromWeek.titleId,
+            serie: fromTitleData.serie,
+            subserie: fromTitleData.subserie,
+            number: fromTitleData.number,
+            weekNumber: exchange.fromWeek.weekNumber,
+            type: 'regular',
+            isExchanged: true,
+            exchangeId: exchange.exchangeId
+          });
+        }
+      }
+    });
+    
     // Ordenar por número de semana
     regularWeeks.sort((a, b) => a.weekNumber - b.weekNumber);
     specialWeeks.sort((a, b) => a.weekNumber - b.weekNumber);
@@ -262,11 +368,7 @@ export const getUserWeeksForYear = async (userId, year) => {
 };
 
 /**
- * Verificar si una semana es especial para un título en un año
- * @param {string} titleId 
- * @param {number} weekNumber 
- * @param {number} year 
- * @returns {Promise<Object|null>} Info de la semana especial o null
+ * Verificar si una semana es especial
  */
 export const checkIfWeekIsSpecial = async (titleId, weekNumber, year) => {
   try {

@@ -313,6 +313,45 @@ export const notifyExchangeCancelled = async (data) => {
   });
 };
 
+
+/**
+ * Notificar intercambio cancelado
+ * @param {Object} data - { toUserEmail, toUserName, fromUserName, fromWeek, toWeek, year }
+ */
+export const notifyAcceptedExchangeCancelled = async (data) => {
+  const { toUserEmail, toUserName, fromUserName, fromWeek, toWeek, year } = data;
+
+  const content = `
+    <p>Hola <strong>${toUserName}</strong>,</p>
+    <p><strong>${fromUserName}</strong> ha cancelado su solicitud de intercambio para el año <strong>${year}</strong>.</p>
+    
+    <div class="info-box">
+      <h3>🚫 Solicitud Cancelada</h3>
+      <div class="week-info">
+        <strong>Ofrecía:</strong> Semana ${fromWeek.weekNumber} - Título ${fromWeek.titleId}
+      </div>
+      <div class="week-info">
+        <strong>Solicitaba:</strong> Semana ${toWeek.weekNumber} - Título ${toWeek.titleId}
+      </div>
+    </div>
+    
+    <p>La solicitud ya no está activa.</p>
+  `;
+
+  const html = generateEmailHTML({
+    title: '🚫 Solicitud Cancelada',
+    content
+  });
+
+  await sendEmail({
+    to: toUserEmail,
+    subject: '🚫 Solicitud de intercambio cancelada',
+    html
+  });
+};
+
+
+
 /**
  * Notificar aprobación de usuario
  * @param {Object} data - { toUserEmail, toUserName }
