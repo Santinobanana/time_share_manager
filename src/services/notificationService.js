@@ -1,24 +1,10 @@
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
-/**
- * Servicio de notificaciones usando Firebase Extension: Trigger Email
- * 
- * La extensión escucha la colección 'mail' y envía emails automáticamente.
- * Documentación: https://github.com/firebase/extensions/tree/master/firestore-send-email
- */
-
-/**
- * Enviar email genérico usando la colección 'mail'
- * @param {Object} emailData - { to, subject, text, html }
- * @returns {Promise<string>} ID del documento creado
- */
 const sendEmail = async (emailData) => {
   try {
     const { to, subject, text, html } = emailData;
 
-    // Crear documento en la colección 'mail'
-    // La Firebase Extension lo detectará y enviará el email
     const mailRef = await addDoc(collection(db, 'mail'), {
       to,
       message: {
@@ -29,7 +15,7 @@ const sendEmail = async (emailData) => {
       createdAt: serverTimestamp()
     });
 
-    console.log('✅ Email programado para envío:', mailRef.id);
+    console.log('✅ Email programado:', mailRef.id);
     return mailRef.id;
   } catch (error) {
     console.error('❌ Error programando email:', error);
@@ -37,13 +23,7 @@ const sendEmail = async (emailData) => {
   }
 };
 
-/**
- * Generar HTML para emails con diseño consistente
- * @param {Object} params - { title, content, footerText }
- * @returns {string} HTML del email
- */
 const generateEmailHTML = ({ title, content, footerText = '' }) => {
-  // Obtener URL base de la aplicación
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://tu-app.com';
   
   return `
@@ -81,9 +61,6 @@ const generateEmailHTML = ({ title, content, footerText = '' }) => {
     .content {
       padding: 30px 20px;
     }
-    .content p {
-      margin: 15px 0;
-    }
     .footer {
       background: #f5f5f5;
       padding: 20px;
@@ -119,15 +96,6 @@ const generateEmailHTML = ({ title, content, footerText = '' }) => {
       margin: 10px 0;
       border: 1px solid #e0e0e0;
     }
-    .week-info strong {
-      color: #667eea;
-    }
-    ul {
-      padding-left: 20px;
-    }
-    ul li {
-      margin: 8px 0;
-    }
   </style>
 </head>
 <body>
@@ -139,9 +107,9 @@ const generateEmailHTML = ({ title, content, footerText = '' }) => {
       ${content}
     </div>
     <div class="footer">
-      ${footerText || 'Sistema de Gestión de Intercambios de Semanas'}
+      ${footerText || 'Sistema de Gestión de Intercambios'}
       <br><br>
-      <small>Este es un mensaje automático, por favor no respondas a este email.</small>
+      <small>Este es un mensaje automático.</small>
     </div>
   </div>
 </body>
@@ -149,17 +117,13 @@ const generateEmailHTML = ({ title, content, footerText = '' }) => {
   `.trim();
 };
 
-/**
- * Notificar nueva solicitud de intercambio
- * @param {Object} data - { toUserEmail, toUserName, fromUserName, fromWeek, toWeek, year, message }
- */
 export const notifyNewExchangeRequest = async (data) => {
   const { toUserEmail, toUserName, fromUserName, fromWeek, toWeek, year, message } = data;
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
   const content = `
     <p>Hola <strong>${toUserName}</strong>,</p>
-    <p><strong>${fromUserName}</strong> te ha enviado una solicitud de intercambio de semanas para el año <strong>${year}</strong>.</p>
+    <p><strong>${fromUserName}</strong> te ha enviado una solicitud de intercambio para el año <strong>${year}</strong>.</p>
     
     <div class="info-box">
       <h3>📤 Ofrece:</h3>
@@ -177,7 +141,7 @@ export const notifyNewExchangeRequest = async (data) => {
     
     ${message ? `<p><strong>Mensaje:</strong><br><em>${message}</em></p>` : ''}
     
-    <p>Ingresa a tu cuenta para revisar y responder a esta solicitud.</p>
+    <p>Ingresa a tu cuenta para revisar y responder.</p>
     <center>
       <a href="${baseUrl}/exchanges" class="button">Ver Solicitud</a>
     </center>
@@ -190,22 +154,18 @@ export const notifyNewExchangeRequest = async (data) => {
 
   await sendEmail({
     to: toUserEmail,
-    subject: '🔄 Nueva solicitud de intercambio de semanas',
+    subject: '🔄 Nueva solicitud de intercambio',
     html
   });
 };
 
-/**
- * Notificar intercambio aceptado
- * @param {Object} data - { toUserEmail, toUserName, fromUserName, fromWeek, toWeek, year }
- */
 export const notifyExchangeAccepted = async (data) => {
   const { toUserEmail, toUserName, fromUserName, fromWeek, toWeek, year } = data;
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
   const content = `
     <p>Hola <strong>${toUserName}</strong>,</p>
-    <p>¡Buenas noticias! <strong>${fromUserName}</strong> ha aceptado tu solicitud de intercambio para el año <strong>${year}</strong>.</p>
+    <p>¡Buenas noticias! <strong>${fromUserName}</strong> ha aceptado tu solicitud de intercambio para <strong>${year}</strong>.</p>
     
     <div class="info-box">
       <h3>✅ Intercambio Confirmado</h3>
@@ -217,12 +177,10 @@ export const notifyExchangeAccepted = async (data) => {
       </div>
     </div>
     
-    <p>El intercambio está confirmado. Puedes ver los detalles en tu cuenta.</p>
+    <p>El intercambio está confirmado.</p>
     <center>
       <a href="${baseUrl}/exchanges" class="button">Ver Intercambios</a>
     </center>
-    
-    <p>¡Que disfrutes tu semana!</p>
   `;
 
   const html = generateEmailHTML({
@@ -232,22 +190,18 @@ export const notifyExchangeAccepted = async (data) => {
 
   await sendEmail({
     to: toUserEmail,
-    subject: '✅ Tu solicitud de intercambio fue aceptada',
+    subject: '✅ Tu solicitud fue aceptada',
     html
   });
 };
 
-/**
- * Notificar intercambio rechazado
- * @param {Object} data - { toUserEmail, toUserName, fromUserName, fromWeek, toWeek, year }
- */
 export const notifyExchangeRejected = async (data) => {
   const { toUserEmail, toUserName, fromUserName, fromWeek, toWeek, year } = data;
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
   const content = `
     <p>Hola <strong>${toUserName}</strong>,</p>
-    <p><strong>${fromUserName}</strong> ha rechazado tu solicitud de intercambio para el año <strong>${year}</strong>.</p>
+    <p><strong>${fromUserName}</strong> ha rechazado tu solicitud de intercambio para <strong>${year}</strong>.</p>
     
     <div class="info-box">
       <h3>❌ Solicitud Rechazada</h3>
@@ -259,9 +213,9 @@ export const notifyExchangeRejected = async (data) => {
       </div>
     </div>
     
-    <p>No te preocupes, puedes intentar con otro usuario o en otra fecha.</p>
+    <p>Puedes intentar con otro usuario.</p>
     <center>
-      <a href="${baseUrl}/exchanges" class="button">Ver Otras Opciones</a>
+      <a href="${baseUrl}/exchanges" class="button">Ver Opciones</a>
     </center>
   `;
 
@@ -272,21 +226,17 @@ export const notifyExchangeRejected = async (data) => {
 
   await sendEmail({
     to: toUserEmail,
-    subject: '❌ Tu solicitud de intercambio fue rechazada',
+    subject: '❌ Solicitud rechazada',
     html
   });
 };
 
-/**
- * Notificar intercambio cancelado
- * @param {Object} data - { toUserEmail, toUserName, fromUserName, fromWeek, toWeek, year }
- */
 export const notifyExchangeCancelled = async (data) => {
   const { toUserEmail, toUserName, fromUserName, fromWeek, toWeek, year } = data;
 
   const content = `
     <p>Hola <strong>${toUserName}</strong>,</p>
-    <p><strong>${fromUserName}</strong> ha cancelado su solicitud de intercambio para el año <strong>${year}</strong>.</p>
+    <p><strong>${fromUserName}</strong> ha cancelado su solicitud de intercambio para <strong>${year}</strong>.</p>
     
     <div class="info-box">
       <h3>🚫 Solicitud Cancelada</h3>
@@ -308,124 +258,71 @@ export const notifyExchangeCancelled = async (data) => {
 
   await sendEmail({
     to: toUserEmail,
-    subject: '🚫 Solicitud de intercambio cancelada',
+    subject: '🚫 Solicitud cancelada',
     html
   });
 };
 
-
 /**
- * Notificar intercambio cancelado
- * @param {Object} data - { toUserEmail, toUserName, fromUserName, fromWeek, toWeek, year }
+ * NUEVA: Notificar cancelación de intercambio ACEPTADO
  */
 export const notifyAcceptedExchangeCancelled = async (data) => {
   const { toUserEmail, toUserName, fromUserName, fromWeek, toWeek, year } = data;
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
   const content = `
     <p>Hola <strong>${toUserName}</strong>,</p>
-    <p><strong>${fromUserName}</strong> ha cancelado su solicitud de intercambio para el año <strong>${year}</strong>.</p>
+    <p><strong>${fromUserName}</strong> ha cancelado el intercambio aceptado para <strong>${year}</strong>.</p>
     
     <div class="info-box">
-      <h3>🚫 Solicitud Cancelada</h3>
+      <h3>⚠️ Intercambio Cancelado</h3>
       <div class="week-info">
-        <strong>Ofrecía:</strong> Semana ${fromWeek.weekNumber} - Título ${fromWeek.titleId}
-      </div>
-      <div class="week-info">
-        <strong>Solicitaba:</strong> Semana ${toWeek.weekNumber} - Título ${toWeek.titleId}
+        <strong>Intercambio que tenías:</strong><br>
+        Semana ${fromWeek.weekNumber} (${fromWeek.titleId}) ↔ Semana ${toWeek.weekNumber} (${toWeek.titleId})
       </div>
     </div>
     
-    <p>La solicitud ya no está activa.</p>
+    <p><strong>Las semanas han vuelto a sus dueños originales.</strong></p>
+    <p>Puedes ver tus semanas actuales en "Mis Semanas" o buscar un nuevo intercambio.</p>
+    
+    <center>
+      <a href="${baseUrl}/my-weeks" class="button">Ver Mis Semanas</a>
+    </center>
   `;
 
   const html = generateEmailHTML({
-    title: '🚫 Solicitud Cancelada',
+    title: '⚠️ Intercambio Cancelado',
     content
   });
 
   await sendEmail({
     to: toUserEmail,
-    subject: '🚫 Solicitud de intercambio cancelada',
+    subject: '⚠️ Un intercambio aceptado fue cancelado',
     html
   });
 };
 
-
-
-/**
- * Notificar aprobación de usuario
- * @param {Object} data - { toUserEmail, toUserName }
- */
 export const notifyUserApproved = async (data) => {
   const { toUserEmail, toUserName } = data;
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
 
   const content = `
     <p>Hola <strong>${toUserName}</strong>,</p>
-    <p>¡Felicitaciones! Tu cuenta ha sido aprobada por un administrador.</p>
-    
-    <div class="info-box">
-      <h3>🎉 ¡Bienvenido/a al Sistema!</h3>
-      <p>Ya puedes acceder a todas las funcionalidades:</p>
-      <ul>
-        <li>✅ Ver tus semanas asignadas</li>
-        <li>✅ Solicitar intercambios con otros usuarios</li>
-        <li>✅ Gestionar tu disponibilidad</li>
-        <li>✅ Actualizar tu perfil</li>
-      </ul>
-    </div>
-    
+    <p>¡Tu cuenta ha sido aprobada!</p>
+    <p>Ya puedes acceder al sistema.</p>
     <center>
-      <a href="${baseUrl}/dashboard" class="button">Ir al Dashboard</a>
+      <a href="${baseUrl}/login" class="button">Iniciar Sesión</a>
     </center>
-    
-    <p>¡Disfruta del sistema!</p>
   `;
 
   const html = generateEmailHTML({
-    title: '🎉 Cuenta Aprobada',
+    title: '✅ Cuenta Aprobada',
     content
   });
 
   await sendEmail({
     to: toUserEmail,
-    subject: '🎉 Tu cuenta ha sido aprobada',
-    html
-  });
-};
-
-/**
- * Notificar al admin sobre nuevo registro pendiente de aprobación
- * @param {Object} data - { adminEmail, adminName, newUserName, newUserEmail }
- */
-export const notifyAdminNewUser = async (data) => {
-  const { adminEmail, adminName, newUserName, newUserEmail } = data;
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
-
-  const content = `
-    <p>Hola <strong>${adminName}</strong>,</p>
-    <p>Un nuevo usuario se ha registrado y está pendiente de aprobación.</p>
-    
-    <div class="info-box">
-      <h3>👤 Nuevo Usuario</h3>
-      <p><strong>Nombre:</strong> ${newUserName}</p>
-      <p><strong>Email:</strong> ${newUserEmail}</p>
-    </div>
-    
-    <p>Ingresa al panel de administración para revisar y aprobar este usuario.</p>
-    <center>
-      <a href="${baseUrl}/admin/users" class="button">Gestionar Usuarios</a>
-    </center>
-  `;
-
-  const html = generateEmailHTML({
-    title: '👤 Nuevo Usuario Pendiente',
-    content
-  });
-
-  await sendEmail({
-    to: adminEmail,
-    subject: '👤 Nuevo usuario pendiente de aprobación',
+    subject: '✅ Cuenta aprobada',
     html
   });
 };

@@ -20,11 +20,6 @@ import {
   notifyAcceptedExchangeCancelled
 } from './notificationService';
 
-/**
- * Crear una nueva solicitud de intercambio
- * @param {Object} exchangeData - Datos del intercambio
- * @returns {Promise<string>} ID del intercambio creado
- */
 export const createExchange = async (exchangeData) => {
   try {
     const { fromUserId, toUserId, fromWeek, toWeek, message, year } = exchangeData;
@@ -41,8 +36,6 @@ export const createExchange = async (exchangeData) => {
       updatedAt: serverTimestamp(),
       resolvedAt: null
     });
-
-    console.log('Intercambio creado:', exchangeRef.id);
 
     try {
       const fromUserDoc = await getDoc(doc(db, 'users', fromUserId));
@@ -73,9 +66,6 @@ export const createExchange = async (exchangeData) => {
   }
 };
 
-/**
- * Obtener todos los intercambios de un usuario
- */
 export const getUserExchanges = async (userId) => {
   try {
     const sentQuery = query(
@@ -110,9 +100,6 @@ export const getUserExchanges = async (userId) => {
   }
 };
 
-/**
- * Obtener intercambios pendientes
- */
 export const getPendingExchanges = async (userId) => {
   try {
     const q = query(
@@ -136,10 +123,6 @@ export const getPendingExchanges = async (userId) => {
   }
 };
 
-/**
- * Aceptar un intercambio
- * ACTUALIZADO: Crea registro en activeExchanges
- */
 export const acceptExchange = async (exchangeId) => {
   try {
     const exchangeRef = doc(db, 'exchanges', exchangeId);
@@ -169,8 +152,6 @@ export const acceptExchange = async (exchangeId) => {
       activatedAt: serverTimestamp()
     });
     
-    console.log('Intercambio aceptado:', exchangeId);
-
     // 3. Notificar
     try {
       const fromUserDoc = await getDoc(doc(db, 'users', exchangeData.fromUserId));
@@ -198,9 +179,6 @@ export const acceptExchange = async (exchangeId) => {
   }
 };
 
-/**
- * Rechazar un intercambio
- */
 export const rejectExchange = async (exchangeId) => {
   try {
     const exchangeRef = doc(db, 'exchanges', exchangeId);
@@ -218,8 +196,6 @@ export const rejectExchange = async (exchangeId) => {
       updatedAt: serverTimestamp()
     });
     
-    console.log('Intercambio rechazado:', exchangeId);
-
     try {
       const fromUserDoc = await getDoc(doc(db, 'users', exchangeData.fromUserId));
       const toUserDoc = await getDoc(doc(db, 'users', exchangeData.toUserId));
@@ -246,9 +222,6 @@ export const rejectExchange = async (exchangeId) => {
   }
 };
 
-/**
- * Cancelar intercambio pendiente
- */
 export const cancelExchange = async (exchangeId, userId) => {
   try {
     const exchangeRef = doc(db, 'exchanges', exchangeId);
@@ -266,8 +239,6 @@ export const cancelExchange = async (exchangeId, userId) => {
       updatedAt: serverTimestamp()
     });
     
-    console.log('Intercambio cancelado:', exchangeId);
-
     try {
       const fromUserDoc = await getDoc(doc(db, 'users', exchangeData.fromUserId));
       const toUserDoc = await getDoc(doc(db, 'users', exchangeData.toUserId));
@@ -295,10 +266,11 @@ export const cancelExchange = async (exchangeId, userId) => {
 };
 
 /**
- * NUEVA FUNCIÓN: Cancelar intercambio aceptado con reversión
+ * CORREGIDO: Cancelar intercambio aceptado con reversión
+ * Ahora elimina correctamente de activeExchanges
  */
 export const cancelAcceptedExchange = async (exchangeId, userId) => {
-  try {
+  try {    
     const exchangeRef = doc(db, 'exchanges', exchangeId);
     const exchangeDoc = await getDoc(exchangeRef);
     
@@ -326,20 +298,30 @@ export const cancelAcceptedExchange = async (exchangeId, userId) => {
       updatedAt: serverTimestamp()
     });
     
+    
     // 2. Eliminar de activeExchanges (reversión)
+    // Buscar por exchangeId
     const activeQuery = query(
       collection(db, 'activeExchanges'),
       where('exchangeId', '==', exchangeId)
     );
+    
     const activeSnapshot = await getDocs(activeQuery);
     
-    const deletePromises = [];
-    activeSnapshot.forEach(doc => {
-      deletePromises.push(deleteDoc(doc.ref));
-    });
-    await Promise.all(deletePromises);
     
-    console.log('Intercambio aceptado cancelado y revertido:', exchangeId);
+    if (activeSnapshot.empty) {
+      console.warn('⚠️ No se encontraron documentos en activeExchanges para este exchangeId');
+      console.warn('   Esto puede pasar si el intercambio ya fue cancelado antes');
+    } else {
+      // Eliminar todos los documentos encontrados
+      const deletePromises = [];
+      activeSnapshot.forEach(docSnap => {
+        deletePromises.push(deleteDoc(docSnap.ref));
+      });
+      
+      await Promise.all(deletePromises);
+    }
+    
 
     // 3. Notificar
     try {
@@ -361,19 +343,16 @@ export const cancelAcceptedExchange = async (exchangeId, userId) => {
           toWeek: exchangeData.toWeek,
           year: exchangeData.year
         });
-      }
+              }
     } catch (emailError) {
       console.error('Error enviando notificación:', emailError);
     }
   } catch (error) {
-    console.error('Error cancelando intercambio aceptado:', error);
+    console.error('❌ Error cancelando intercambio aceptado:', error);
     throw error;
   }
 };
 
-/**
- * NUEVA FUNCIÓN: Obtener intercambios activos
- */
 export const getActiveExchanges = async (userId, year) => {
   try {
     const q1 = query(
@@ -410,9 +389,6 @@ export const getActiveExchanges = async (userId, year) => {
   }
 };
 
-/**
- * Obtener detalles de intercambio
- */
 export const getExchangeDetails = async (exchangeId) => {
   try {
     const exchangeRef = doc(db, 'exchanges', exchangeId);
@@ -447,9 +423,6 @@ export const getExchangeDetails = async (exchangeId) => {
   }
 };
 
-/**
- * Obtener historial
- */
 export const getExchangeHistory = async (userId) => {
   try {
     const q = query(
@@ -475,9 +448,6 @@ export const getExchangeHistory = async (userId) => {
   }
 };
 
-/**
- * Obtener estadísticas
- */
 export const getExchangeStats = async (userId) => {
   try {
     const { sent, received } = await getUserExchanges(userId);
@@ -497,9 +467,6 @@ export const getExchangeStats = async (userId) => {
   }
 };
 
-/**
- * Verificar duplicados
- */
 export const checkDuplicateExchange = async (fromUserId, toUserId, fromWeek, toWeek) => {
   try {
     const q = query(

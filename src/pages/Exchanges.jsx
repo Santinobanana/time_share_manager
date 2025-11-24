@@ -24,7 +24,8 @@ import {
   rejectExchange,
   cancelExchange,
   getExchangeStats,
-  checkDuplicateExchange
+  checkDuplicateExchange,
+  cancelAcceptedExchange
 } from '../services/exchangeService';
 import { getUserWeeksForYear } from '../services/titleService';
 import { getAllUsers } from '../services/userService';
@@ -36,7 +37,7 @@ export default function Exchanges() {
   const [sentExchanges, setSentExchanges] = useState([]);
   const [receivedExchanges, setReceivedExchanges] = useState([]);
   const [stats, setStats] = useState(null);
-  const [activeTab, setActiveTab] = useState('received'); // received, sent, history
+  const [activeTab, setActiveTab] = useState('received');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedExchange, setSelectedExchange] = useState(null);
@@ -52,6 +53,9 @@ export default function Exchanges() {
     targetWeek: '',
     message: ''
   });
+
+  // NUEVO: Estado para almacenar información de usuarios
+  const [usersMap, setUsersMap] = useState({});
 
   const currentYear = 2027;
 
@@ -76,10 +80,19 @@ export default function Exchanges() {
       setReceivedExchanges(exchangesData.received || []);
       setStats(statsData);
       
+      // NUEVO: Crear mapa de usuarios para acceso rápido
+      const usersMapping = {};
+      usersData.forEach(u => {
+        usersMapping[u.uid] = {
+          name: u.name,
+          email: u.email
+        };
+      });
+      setUsersMap(usersMapping);
+      
       // Cargar semanas del usuario actual
       try {
         const weeksData = await getUserWeeksForYear(user.uid, currentYear);
-        // Convertir a formato array si es objeto
         const weeksArray = weeksData.all || [];
         setMyWeeks(weeksArray);
       } catch (weeksError) {
@@ -115,7 +128,6 @@ export default function Exchanges() {
 
     try {
       const weeksData = await getUserWeeksForYear(userId, currentYear);
-      // Convertir a formato array si es objeto
       const weeksArray = weeksData.all || [];
       setSelectedUserWeeks(weeksArray);
     } catch (error) {
@@ -138,7 +150,6 @@ export default function Exchanges() {
     try {
       setSubmitting(true);
 
-      // Encontrar detalles de las semanas seleccionadas
       const myWeekData = myWeeks.find(w => `${w.titleId}-${w.weekNumber}` === createForm.myWeek);
       const targetWeekData = selectedUserWeeks.find(w => `${w.titleId}-${w.weekNumber}` === createForm.targetWeek);
 
@@ -147,7 +158,6 @@ export default function Exchanges() {
         return;
       }
 
-      // Verificar duplicados
       const isDuplicate = await checkDuplicateExchange(
         user.uid,
         selectedUser,
@@ -160,7 +170,6 @@ export default function Exchanges() {
         return;
       }
 
-      // Crear intercambio
       await createExchange({
         fromUserId: user.uid,
         toUserId: selectedUser,
@@ -242,6 +251,24 @@ export default function Exchanges() {
     }
   };
 
+  const handlecancelAcceptedExchange = async (exchangeId) => {
+    if (!confirm('¿Estás seguro de cancelar este intercambio? Esta acción lo revertirá y ambos usuarios recuperarán sus semanas originales.')) {
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await cancelAcceptedExchange(exchangeId, user.uid);
+      alert('Intercambio cancelado y revertido exitosamente');
+      await loadData();
+    } catch (error) {
+      console.error('Error cancelando intercambio:', error);
+      alert('Error al cancelar intercambio: ' + error.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const getStatusBadge = (status) => {
     const badges = {
       pending: <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm font-medium flex items-center gap-1"><Clock size={14} /> Pendiente</span>,
@@ -261,6 +288,11 @@ export default function Exchanges() {
       'C': 'bg-serie-c',
       'D': 'bg-serie-d'
     }[serie] || 'bg-gray-200';
+  };
+
+  // NUEVO: Función para obtener el nombre del usuario
+  const getUserName = (userId) => {
+    return usersMap[userId]?.name || 'Usuario desconocido';
   };
 
   const displayExchanges = activeTab === 'sent' ? sentExchanges : 
@@ -376,6 +408,11 @@ export default function Exchanges() {
                         <div className={`${getSerieColor(exchange.fromWeek.titleId)} px-3 py-2 rounded-lg`}>
                           <div className="font-medium">Semana {exchange.fromWeek.weekNumber}</div>
                           <div className="text-sm">{exchange.fromWeek.titleId}</div>
+                          {/* NUEVO: Mostrar nombre del dueño */}
+                          <div className="text-xs mt-1 flex items-center gap-1 opacity-75">
+                            <User size={12} />
+                            {getUserName(exchange.fromUserId)}
+                          </div>
                         </div>
                       </div>
 
@@ -387,6 +424,11 @@ export default function Exchanges() {
                         <div className={`${getSerieColor(exchange.toWeek.titleId)} px-3 py-2 rounded-lg`}>
                           <div className="font-medium">Semana {exchange.toWeek.weekNumber}</div>
                           <div className="text-sm">{exchange.toWeek.titleId}</div>
+                          {/* NUEVO: Mostrar nombre del dueño */}
+                          <div className="text-xs mt-1 flex items-center gap-1 opacity-75">
+                            <User size={12} />
+                            {getUserName(exchange.toUserId)}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -432,12 +474,12 @@ export default function Exchanges() {
                       </Button>
                     )}
 
-                    {/* NUEVO: Permitir cancelar intercambios aceptados */}
+                    {/* Permitir cancelar intercambios aceptados */}
                     {exchange.status === 'accepted' && (
                       <Button
                         variant="danger"
                         size="sm"
-                        onClick={() => handleCancel(exchange.id)}
+                        onClick={() => handlecancelAcceptedExchange(exchange.id)}
                         disabled={submitting}
                       >
                         Cancelar y Revertir

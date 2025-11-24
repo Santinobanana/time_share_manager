@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, doc, setDoc, connectFirestoreEmulator } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, connectFirestoreEmulator } from 'firebase/firestore';
 
 // Configuración de Firebase
 const firebaseConfig = {
@@ -41,15 +41,28 @@ function calcularPascua(year) {
 }
 
 /**
- * Calcula el número de semana del año
+ * Calcula el número de semana del año según sistema de domingo como primer día
+ * La semana 1 empieza el primer domingo del año
  */
 function obtenerNumeroSemana(date) {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-  return weekNo;
+  const year = date.getFullYear();
+  
+  // Encontrar el primer domingo del año
+  let primerDomingo = new Date(year, 0, 1);
+  const diaSemana = primerDomingo.getDay();
+  
+  // Si el 1 de enero no es domingo, avanzar al siguiente domingo
+  if (diaSemana !== 0) {
+    primerDomingo.setDate(primerDomingo.getDate() + (7 - diaSemana));
+  }
+  
+  // Calcular días transcurridos desde el primer domingo
+  const diasDesdeInicio = Math.floor((date - primerDomingo) / (1000 * 60 * 60 * 24));
+  
+  // Calcular número de semana (empezando desde 1)
+  const numeroSemana = Math.floor(diasDesdeInicio / 7) + 1;
+  
+  return numeroSemana;
 }
 
 /**
@@ -60,32 +73,91 @@ function calcularSemanasEspeciales(year) {
   const semanaSanta = new Date(pascua);
   semanaSanta.setDate(semanaSanta.getDate() - 7);
   
+  // Calcular Navidad (semana del 25 de diciembre)
+  const navidad = new Date(year, 11, 25);
+  const semanaNavidad = obtenerNumeroSemana(navidad);
+  
+  // Calcular Fin de Año (semana del 31 de diciembre)
+  const finAno = new Date(year, 11, 31);
+  const semanaFinAno = obtenerNumeroSemana(finAno);
+  
   return {
     SANTA: obtenerNumeroSemana(semanaSanta),
     PASCUA: obtenerNumeroSemana(pascua),
-    NAVIDAD: 51,
-    FIN_ANO: 52
+    NAVIDAD: semanaNavidad,
+    FIN_ANO: semanaFinAno
   };
 }
 
 /**
- * Genera todos los años desde 2027 hasta 2074 (48 años)
+ * Genera todos los años desde 2027 hasta 2200
  */
 function generarArrayAnos() {
   const años = [];
-  for (let año = 2027; año <= 2074; año++) {
+  for (let año = 2027; año <= 2200; año++) {
     años.push(año);
   }
   return años;
 }
 
 /**
- * Calcula las semanas regulares
+ * Obtiene el total de semanas del año (52 o 53)
+ */
+function getTotalWeeksInYear(year) {
+  const lastDay = new Date(year, 11, 31);
+  const weekNumber = obtenerNumeroSemana(lastDay);
+  return weekNumber;
+}
+
+/**
+ * Crea el mapeo de semanas virtuales → semanas reales
+ * Excluye las 4 semanas especiales y asigna en ciclos A→B→C→D
+ */
+function crearMapeoSemanasDisponibles(year) {
+  const totalWeeks = getTotalWeeksInYear(year);
+  const semanasEspeciales = calcularSemanasEspeciales(year);
+  const semanasEspecialesSet = new Set(Object.values(semanasEspeciales));
+  
+  // Array de semanas disponibles (excluyendo especiales)
+  const semanasDisponibles = [];
+  for (let week = 1; week <= totalWeeks; week++) {
+    if (!semanasEspecialesSet.has(week)) {
+      semanasDisponibles.push(week);
+    }
+  }
+  
+  // Crear mapeo para cada serie (A=0, B=1, C=2, D=3)
+  const mapeo = {
+    0: {}, // Serie A
+    1: {}, // Serie B
+    2: {}, // Serie C
+    3: {}  // Serie D
+  };
+  
+  // Asignar en ciclos A→B→C→D
+  let virtualWeekCounters = [1, 1, 1, 1]; // Contadores de semana virtual para cada serie
+  
+  for (let i = 0; i < semanasDisponibles.length && i < 48; i++) {
+    const serieIndex = i % 4; // 0=A, 1=B, 2=C, 3=D
+    const realWeek = semanasDisponibles[i];
+    const virtualWeek = virtualWeekCounters[serieIndex];
+    
+    mapeo[serieIndex][virtualWeek] = realWeek;
+    virtualWeekCounters[serieIndex]++;
+  }
+  
+  return mapeo;
+}
+
+/**
+ * Calcula las semanas regulares (mapea virtual → real)
  */
 function calcularSemanaRegular(serie, subserie, numero, año) {
   const añoBase = 2027;
   const añosTranscurridos = año - añoBase;
   
+  let semanaVirtual = 1; // Valor por defecto
+
   // Series B, C, D: Rotación de 12 semanas
   if (serie === 'B' || serie === 'C' || serie === 'D') {
     const offsetSubserie = (subserie - 1) * 4;
@@ -96,36 +168,45 @@ function calcularSemanaRegular(serie, subserie, numero, año) {
       semanaInicial = semanaInicial - 12;
     }
     
-    const semanaActual = ((semanaInicial - 1 + añosTranscurridos) % 12) + 1;
-    return semanaActual;
+    semanaVirtual = ((semanaInicial - 1 + añosTranscurridos) % 12) + 1;
+    
+    // Mapear semana virtual → semana real del calendario
+    const mapeo = crearMapeoSemanasDisponibles(año);
+    const serieIndex = { 'B': 1, 'C': 2, 'D': 3 }[serie];
+    const semanaReal = mapeo[serieIndex][semanaVirtual];
+    
+    return semanaReal || 1;
   }
-  
-  // Serie A: Patrón específico
-  if (serie === 'A') {
+  // Serie A: Patrón específico (YA contiene las semanas virtuales correctas, solo mapear)
+  else if (serie === 'A') {
     const serieABasePattern = {
       '1-1': [2, 3, 4, 5, 6, 7, 8, 9, 10],
       '1-2': [5, 6, 7, 8, 9, 10, 11, 12, 1],
       '1-3': [8, 9, 10, 11, 12, 1, 2, 5, 6],
       '1-4': [12, 1, 2, 3, 4, 5, 6, 8, 9],
       '2-1': [1, 2, 3, 4, 5, 6, 7, 7, 8],
-      '2-2': [3, 4, 5, 6, 7, 8, 9, 10, 11],
-      '2-3': [6, 7, 8, 9, 10, 11, 12, 1, 2],
-      '2-4': [10, 11, 12, 1, 2, 3, 4, 5, 6],
+      '2-2': [7, 8, 9, 10, 11, 12, 1, 2, 3],
+      '2-3': [11, 12, 1, 2, 3, 4, 5, 6, 7],
+      '2-4': [3, 4, 5, 6, 7, 8, 9, 10, 11],
       '3-1': [9, 10, 11, 12, 1, 2, 3, 4, 5],
-      '3-2': [11, 12, 1, 2, 3, 4, 5, 6, 7],
-      '3-3': [2, 3, 4, 5, 6, 7, 8, 9, 10],
-      '3-4': [4, 5, 6, 7, 8, 9, 10, 11, 12],
+      '3-2': [4, 5, 6, 7, 8, 9, 10, 11, 12],
+      '3-3': [6, 7, 8, 9, 10, 11, 12, 1, 2],
+      '3-4': [10, 11, 12, 1, 2, 3, 4, 5, 6],
     };
 
     const key = `${subserie}-${numero}`;
     const pattern = serieABasePattern[key];
     
-    if (!pattern) {
-      return 1;
+    if (pattern) {
+      const patternIndex = añosTranscurridos % 12; // Ciclo de 12 años
+      semanaVirtual = pattern[patternIndex];
     }
-
-    const patternIndex = añosTranscurridos % 9;
-    return pattern[patternIndex];
+    
+    // Mapear semana virtual → semana real del calendario
+    const mapeo = crearMapeoSemanasDisponibles(año);
+    const semanaReal = mapeo[0][semanaVirtual]; // Serie A = index 0
+    
+    return semanaReal || 1;
   }
   
   return 1;
@@ -133,85 +214,49 @@ function calcularSemanaRegular(serie, subserie, numero, año) {
 
 /**
  * Calcula qué título le corresponde una semana especial
- * CADA SERIE TIENE UN OFFSET INICIAL DIFERENTE
  */
 function calcularTituloSemanEspecial(serie, subserie, numero, tipoSemana, año) {
   const añoBase = 2027;
   const añosTranscurridos = año - añoBase;
   
-  // SERIE A: Lógica específica (sin cambios)
-  if (serie === 'A') {
-    const rotacion = añosTranscurridos % 4;
-    const numeroTitulo = rotacion + 1;
-    
-    const currentTitleId = `A-${subserie}-${numero}`;
-    const assignedTitleId = `A-${subserie}-${numeroTitulo}`;
+  // Determinar qué título está activo este año (ciclo de 12)
+  const añosIndex = añosTranscurridos % 12;
+  const assignedSubserie = (añosIndex % 3) + 1;
+  const assignedNumero = Math.floor(añosIndex / 3) + 1;
+  
+  const assignedTitleId = `${serie}-${assignedSubserie}-${assignedNumero}`;
+  const currentTitleId = `${serie}-${subserie}-${numero}`;
 
-    if (subserie === 1) {
-      if (currentTitleId === assignedTitleId && 
-          (tipoSemana === 'SANTA' || tipoSemana === 'PASCUA')) {
-        return currentTitleId;
-      }
-    } else if (subserie === 2) {
-      if (currentTitleId === assignedTitleId && 
-          (tipoSemana === 'NAVIDAD' || tipoSemana === 'FIN_ANO')) {
-        return currentTitleId;
-      }
-    } else if (subserie === 3) {
-      if (currentTitleId === assignedTitleId) {
-        return currentTitleId;
-      }
-    }
-    
+  // Si este título no está activo este año, retornar null
+  if (currentTitleId !== assignedTitleId) {
     return null;
   }
+
+  // OFFSET INICIAL POR SERIE
+  const OFFSET_POR_SERIE = {
+    'A': 2,  // A empieza en SANTA (índice 2)
+    'B': 3,  // B empieza en PASCUA (índice 3)
+    'C': 0,  // C empieza en NAVIDAD (índice 0)
+    'D': 1   // D empieza en FIN_ANO (índice 1)
+  };
+
+  const offsetInicial = OFFSET_POR_SERIE[serie];
+
+  // Determinar qué semana especial corresponde
+  const ciclosCompletos = Math.floor(añosTranscurridos / 12);
+  const semanaOffset = ciclosCompletos % 4;
+  const baseIndex = añosTranscurridos % 4;
   
-  // SERIES B, C, D: CON OFFSET INICIAL POR SERIE
-  if (serie === 'B' || serie === 'C' || serie === 'D') {
-    // 1. Determinar qué título está activo este año (ciclo de 12)
-    const añosIndex = añosTranscurridos % 12;
-    const assignedSubserie = (añosIndex % 3) + 1;
-    const assignedNumero = Math.floor(añosIndex / 3) + 1;
-    
-    const assignedTitleId = `${serie}-${assignedSubserie}-${assignedNumero}`;
-    const currentTitleId = `${serie}-${subserie}-${numero}`;
+  // Aplicar offset inicial de la serie + offset acumulativo + índice base
+  const realIndex = (offsetInicial + baseIndex + semanaOffset) % 4;
+  
+  // Orden de semanas (array base)
+  const SPECIAL_WEEKS_ORDER = ['NAVIDAD', 'FIN_ANO', 'SANTA', 'PASCUA'];
+  const assignedWeekType = SPECIAL_WEEKS_ORDER[realIndex];
 
-    // Si este título no está activo este año, retornar null
-    if (currentTitleId !== assignedTitleId) {
-      return null;
-    }
-
-    // 2. OFFSET INICIAL POR SERIE
-    // Según tu patrón:
-    // 2027: A-1-1 Santa(2),  B-1-1 Pascua(3), C-1-1 Navidad(0), D-1-1 Fin_Año(1)
-    // 2028: A-2-1 Pascua(3), B-2-1 Navidad(0), C-2-1 Fin_Año(1), D-2-1 Santa(2)
-    // 2029: A-3-1 Navidad(0), B-3-1 Fin_Año(1), C-3-1 Santa(2),  D-3-1 Pascua(3)
-    
-    const OFFSET_POR_SERIE = {
-      'A': 2,  // A empieza en SANTA (índice 2)
-      'B': 3,  // B empieza en PASCUA (índice 3)
-      'C': 0,  // C empieza en NAVIDAD (índice 0)
-      'D': 1   // D empieza en FIN_ANO (índice 1)
-    };
-
-    const offsetInicial = OFFSET_POR_SERIE[serie];
-
-    // 3. Determinar qué semana especial corresponde (con offset acumulativo)
-    const ciclosCompletos = Math.floor(añosTranscurridos / 12);
-    const semanaOffset = ciclosCompletos % 4;
-    const baseIndex = añosTranscurridos % 4;
-    
-    // Aplicar offset inicial de la serie + offset acumulativo + índice base
-    const realIndex = (offsetInicial + baseIndex + semanaOffset) % 4;
-    
-    // Orden de semanas (array base)
-    const SPECIAL_WEEKS_ORDER = ['NAVIDAD', 'FIN_ANO', 'SANTA', 'PASCUA'];
-    const assignedWeekType = SPECIAL_WEEKS_ORDER[realIndex];
-
-    // 4. Verificar si coincide con la semana solicitada
-    if (tipoSemana === assignedWeekType) {
-      return currentTitleId;
-    }
+  // Verificar si coincide con la semana solicitada
+  if (tipoSemana === assignedWeekType) {
+    return currentTitleId;
   }
   
   return null;
@@ -281,7 +326,7 @@ function generarTitulos() {
 }
 
 /**
- * Verifica el patrón específico que mencionaste
+ * Verifica el patrón específico
  */
 function verificarPatronEspecifico(titulos) {
   console.log('');
@@ -289,7 +334,41 @@ function verificarPatronEspecifico(titulos) {
   console.log('═══════════════════════════════════════════════');
   console.log('');
   
-  console.log('📌 Año 2027 (tu patrón esperado):');
+  // DEBUG: Ver semanas especiales y disponibles
+  const year = 2027;
+  const semanasEsp = calcularSemanasEspeciales(year);
+  const totalWeeks = getTotalWeeksInYear(year);
+  const mapeo = crearMapeoSemanasDisponibles(year);
+  
+  console.log('📊 DEBUG - Año 2027:');
+  console.log('───────────────────────────────────────────────');
+  console.log(`   Total semanas del año: ${totalWeeks}`);
+  console.log(`   Semanas especiales:`, semanasEsp);
+  console.log('');
+  console.log('   Primeras 5 semanas del mapeo Serie A:');
+  for (let i = 1; i <= 5; i++) {
+    console.log(`      Virtual ${i} → Real ${mapeo[0][i]}`);
+  }
+  console.log('');
+  console.log('   Primeras 5 semanas del mapeo Serie B:');
+  for (let i = 1; i <= 5; i++) {
+    console.log(`      Virtual ${i} → Real ${mapeo[1][i]}`);
+  }
+  console.log('');
+  
+  console.log('📌 Año 2027 (semanas regulares):');
+  console.log('───────────────────────────────────────────────');
+  
+  const titulo = titulos.find(x => x.id === 'A-1-1');
+  console.log(`   A-1-1 en 2027: Semana real ${titulo.weeksByYear[2027]} (debería ser 2 según calendario)`);
+  console.log(`   A-1-1 en 2028: Semana real ${titulo.weeksByYear[2028]} (debería ser 6 según patrón)`);
+  console.log(`   A-1-1 en 2029: Semana real ${titulo.weeksByYear[2029]} (debería ser 10 según patrón)`);
+  
+  const tituloB = titulos.find(x => x.id === 'B-1-1');
+  console.log(`   B-1-1 en 2027: Semana real ${tituloB.weeksByYear[2027]} (debería ser 3 según calendario)`);
+  
+  console.log('');
+  console.log('📌 Semanas especiales 2027:');
   console.log('───────────────────────────────────────────────');
   
   const verificaciones2027 = [
@@ -299,91 +378,15 @@ function verificarPatronEspecifico(titulos) {
     { titulo: 'D-1-1', esperado: 'FIN_ANO' }
   ];
   
-  verificaciones2027.forEach(({ titulo, esperado }) => {
-    const t = titulos.find(x => x.id === titulo);
+  verificaciones2027.forEach(({ titulo: tituloId, esperado }) => {
+    const t = titulos.find(x => x.id === tituloId);
     const especiales = t?.specialWeeksByYear[2027] || [];
     const tiene = especiales.length > 0 ? especiales[0].type : 'NINGUNA';
     const emoji = tiene === esperado ? '✅' : '❌';
-    console.log(`   ${emoji} ${titulo}: ${tiene} (esperado: ${esperado})`);
+    console.log(`   ${emoji} ${tituloId}: ${tiene} (esperado: ${esperado})`);
   });
   
   console.log('');
-  console.log('📌 Año 2028 (tu patrón esperado):');
-  console.log('───────────────────────────────────────────────');
-  
-  const verificaciones2028 = [
-    { titulo: 'A-2-1', esperado: 'PASCUA' },
-    { titulo: 'B-2-1', esperado: 'NAVIDAD' },
-    { titulo: 'C-2-1', esperado: 'FIN_ANO' },
-    { titulo: 'D-2-1', esperado: 'SANTA' }
-  ];
-  
-  verificaciones2028.forEach(({ titulo, esperado }) => {
-    const t = titulos.find(x => x.id === titulo);
-    const especiales = t?.specialWeeksByYear[2028] || [];
-    const tiene = especiales.length > 0 ? especiales[0].type : 'NINGUNA';
-    const emoji = tiene === esperado ? '✅' : '❌';
-    console.log(`   ${emoji} ${titulo}: ${tiene} (esperado: ${esperado})`);
-  });
-  
-  console.log('');
-  console.log('📌 Año 2029 (tu patrón esperado):');
-  console.log('───────────────────────────────────────────────');
-  
-  const verificaciones2029 = [
-    { titulo: 'A-3-1', esperado: 'NAVIDAD' },
-    { titulo: 'B-3-1', esperado: 'FIN_ANO' },
-    { titulo: 'C-3-1', esperado: 'SANTA' },
-    { titulo: 'D-3-1', esperado: 'PASCUA' }
-  ];
-  
-  verificaciones2029.forEach(({ titulo, esperado }) => {
-    const t = titulos.find(x => x.id === titulo);
-    const especiales = t?.specialWeeksByYear[2029] || [];
-    const tiene = especiales.length > 0 ? especiales[0].type : 'NINGUNA';
-    const emoji = tiene === esperado ? '✅' : '❌';
-    console.log(`   ${emoji} ${titulo}: ${tiene} (esperado: ${esperado})`);
-  });
-  
-  console.log('');
-}
-
-/**
- * Verifica rotación completa de cada título
- */
-function verificarRotacionCompleta(titulos) {
-  console.log('📊 VERIFICACIÓN DE ROTACIÓN COMPLETA:');
-  console.log('═══════════════════════════════════════════════');
-  console.log('');
-  
-  // Verificar un título de cada serie
-  ['B-1-1', 'C-1-1', 'D-1-1'].forEach(titleId => {
-    const titulo = titulos.find(t => t.id === titleId);
-    if (titulo) {
-      console.log(`📌 ${titleId} en años clave:`);
-      
-      const añosClave = [2027, 2039, 2051, 2063];
-      añosClave.forEach(año => {
-        const especiales = titulo.specialWeeksByYear[año];
-        if (especiales && especiales.length > 0) {
-          console.log(`   ${año}: ${especiales[0].type}`);
-        }
-      });
-      
-      // Contar total
-      let total = 0;
-      const porTipo = { NAVIDAD: 0, FIN_ANO: 0, SANTA: 0, PASCUA: 0 };
-      Object.values(titulo.specialWeeksByYear).forEach(arr => {
-        arr.forEach(esp => {
-          total++;
-          porTipo[esp.type]++;
-        });
-      });
-      
-      console.log(`   Total: ${total} (NAVIDAD:${porTipo.NAVIDAD}, FIN_ANO:${porTipo.FIN_ANO}, SANTA:${porTipo.SANTA}, PASCUA:${porTipo.PASCUA})`);
-      console.log('');
-    }
-  });
 }
 
 /**
@@ -391,19 +394,14 @@ function verificarRotacionCompleta(titulos) {
  */
 async function cargarTitulos() {
   try {
-    console.log('🚀 CARGA CON OFFSET POR SERIE');
+    console.log('🚀 CARGA CON MAPEO CORRECTO');
     console.log('════════════════════════════════════════════════');
-    console.log('');
-    console.log('   🎯 Cada serie tiene su propio offset inicial');
-    console.log('   🔄 Cada título recibe las 4 semanas en 48 años');
-    console.log('   📅 Años: 2027 - 2074');
     console.log('');
     
     const titulos = generarTitulos();
     
     // Verificar patrón antes de cargar
     verificarPatronEspecifico(titulos);
-    verificarRotacionCompleta(titulos);
     
     console.log('⏳ Cargando en Firestore...');
     console.log('');
@@ -431,12 +429,6 @@ async function cargarTitulos() {
     console.log('════════════════════════════════════════════════');
     console.log('🎉 ¡CARGA COMPLETADA!');
     console.log('════════════════════════════════════════════════');
-    console.log('');
-    console.log('✅ 48 títulos creados con offset por serie');
-    console.log('✅ Patrón específico verificado');
-    console.log('✅ Cada título con sus 4 semanas especiales');
-    console.log('');
-    console.log('💡 Verifica en: http://localhost:4000/firestore');
     console.log('');
     
     process.exit(0);

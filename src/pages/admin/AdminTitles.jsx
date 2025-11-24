@@ -19,6 +19,8 @@ import {
   Calendar,
   RefreshCw
 } from 'lucide-react';
+import { format, addDays, startOfYear } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 export default function AdminTitles() {
   const [titles, setTitles] = useState([]);
@@ -32,7 +34,7 @@ export default function AdminTitles() {
   const [selectedTitle, setSelectedTitle] = useState(null);
   const [titleOwner, setTitleOwner] = useState(null);
 
-  const years = [2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035];
+  const years = [2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035, 2036, 2037, 2038];
 
   useEffect(() => {
     loadData();
@@ -54,6 +56,48 @@ export default function AdminTitles() {
     } finally {
       setLoading(false);
     }
+  };
+
+  /**
+   * Calcular fecha de inicio de semana (Domingo)
+   */
+  const getWeekStartDate = (year, weekNumber) => {
+    const firstDayOfYear = new Date(year, 0, 1);
+    
+    // Encontrar el primer domingo del año
+    let primerDomingo = new Date(firstDayOfYear);
+    const diaSemana = primerDomingo.getDay();
+    
+    if (diaSemana !== 0) {
+      primerDomingo.setDate(primerDomingo.getDate() + (7 - diaSemana));
+    }
+    
+    // Calcular la fecha de inicio de la semana
+    const diasDesdeInicio = (weekNumber - 1) * 7;
+    const weekStart = addDays(primerDomingo, diasDesdeInicio);
+    
+    return format(weekStart, 'dd/MM', { locale: es });
+  };
+
+  /**
+   * Calcular fecha de fin de semana (Sábado)
+   */
+  const getWeekEndDate = (year, weekNumber) => {
+    const firstDayOfYear = new Date(year, 0, 1);
+    
+    // Encontrar el primer domingo del año
+    let primerDomingo = new Date(firstDayOfYear);
+    const diaSemana = primerDomingo.getDay();
+    
+    if (diaSemana !== 0) {
+      primerDomingo.setDate(primerDomingo.getDate() + (7 - diaSemana));
+    }
+    
+    // Calcular la fecha de fin de la semana (6 días después del inicio)
+    const diasDesdeInicio = (weekNumber - 1) * 7 + 6;
+    const weekEnd = addDays(primerDomingo, diasDesdeInicio);
+    
+    return format(weekEnd, 'dd/MM', { locale: es });
   };
 
   const filteredTitles = titles.filter(title => {
@@ -384,20 +428,37 @@ export default function AdminTitles() {
               </div>
             )}
 
-            {/* Semanas */}
+            {/* Semanas CON FECHAS */}
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
                 Semanas Asignadas (Próximos años)
               </h3>
-              <div className="grid grid-cols-3 gap-2">
-                {years.slice(0, 6).map(year => (
-                  <div key={year} className="bg-gray-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-gray-600 mb-1">{year}</p>
-                    <p className="text-lg font-bold text-gray-900">
-                      {selectedTitle.weeksByYear?.[year] || '-'}
-                    </p>
-                  </div>
-                ))}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {years.slice(0, 12).map(year => {
+                  const weekNumber = selectedTitle.weeksByYear?.[year];
+                  return (
+                    <div key={year} className="bg-gray-50 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs font-semibold text-gray-600">{year}</p>
+                        <p className="text-xl font-bold text-gray-900">
+                          {weekNumber || '-'}
+                        </p>
+                      </div>
+                      {weekNumber && (
+                        <div className="text-xs text-gray-600 space-y-1">
+                          <div className="flex justify-between">
+                            <span>Inicio:</span>
+                            <span className="font-medium">{getWeekStartDate(year, weekNumber)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Fin:</span>
+                            <span className="font-medium">{getWeekEndDate(year, weekNumber)}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 

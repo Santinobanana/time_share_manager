@@ -77,8 +77,6 @@ export const getTitlesByUser = async (userId) => {
 
 /**
  * Obtener propietario de un título
- * @param {string} titleId 
- * @returns {Promise<Object|null>}
  */
 export const getTitleOwner = async (titleId) => {
   try {
@@ -228,6 +226,8 @@ export const getTitleWeeksForYear = async (titleId, year) => {
 /**
  * ACTUALIZADO: Obtener semanas de un usuario para un año
  * Ahora considera intercambios activos
+ * 
+ * FIX: Cambiado forEach por for...of para poder usar await
  */
 export const getUserWeeksForYear = async (userId, year) => {
   try {
@@ -294,7 +294,8 @@ export const getUserWeeksForYear = async (userId, year) => {
     });
     
     // 3. Aplicar intercambios activos
-    activeExchanges.forEach(exchange => {
+    // 🔧 FIX: Cambiado de forEach a for...of para poder usar await
+    for (const exchange of activeExchanges) {
       if (exchange.fromUserId === userId) {
         // Este usuario dio una semana y recibió otra
         
@@ -334,8 +335,8 @@ export const getUserWeeksForYear = async (userId, year) => {
         }
         
         // Agregar la semana que recibió
-        // Necesitamos obtener info del título
-        const fromTitleDoc = getDoc(doc(db, 'titles', exchange.fromWeek.titleId));
+        // 🔧 FIX: Ahora el await funciona porque estamos en for...of
+        const fromTitleDoc = await getDoc(doc(db, 'titles', exchange.fromWeek.titleId));
         if (fromTitleDoc.exists()) {
           const fromTitleData = fromTitleDoc.data();
           regularWeeks.push({
@@ -350,7 +351,7 @@ export const getUserWeeksForYear = async (userId, year) => {
           });
         }
       }
-    });
+    }
     
     // Ordenar por número de semana
     regularWeeks.sort((a, b) => a.weekNumber - b.weekNumber);
