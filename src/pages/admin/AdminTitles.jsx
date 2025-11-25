@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Modal from '../../components/common/Modal';
 import PDFDownloadButton from '../../components/common/PDFDownloadButton';
+import { Sparkles } from 'lucide-react';
+import LeapWeekRaffleModal from '../../components/admin/LeapWeekRaffleModal';
 import { 
   getAllTitles,
   getTitleById,
@@ -23,6 +26,7 @@ import { format, addDays, startOfYear } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 export default function AdminTitles() {
+  const { user } = useAuth();
   const [titles, setTitles] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -33,6 +37,8 @@ export default function AdminTitles() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedTitle, setSelectedTitle] = useState(null);
   const [titleOwner, setTitleOwner] = useState(null);
+  const [showLeapWeekModal, setShowLeapWeekModal] = useState(false);
+
 
   const years = [2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035, 2036, 2037, 2038];
 
@@ -174,6 +180,14 @@ export default function AdminTitles() {
           <h1 className="text-3xl font-bold text-gray-900">Gestión de Títulos</h1>
           <p className="text-gray-600 mt-1">Administra todos los títulos del sistema</p>
         </div>
+
+        <Button 
+        onClick={() => setShowLeapWeekModal(true)}
+        className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700">
+        <Sparkles size={20} className="mr-2" />
+        Rifa de Semana Bisiesta
+  </Button>
+
       </div>
 
       {/* Estadísticas */}
@@ -476,6 +490,15 @@ export default function AdminTitles() {
           </div>
         )}
       </Modal>
+      <LeapWeekRaffleModal
+        isOpen={showLeapWeekModal}
+        onClose={() => setShowLeapWeekModal(false)}
+        onSuccess={() => {
+          setShowLeapWeekModal(false);
+          loadData();
+        }}
+        currentUserId={user?.uid}
+      />
     </div>
   );
 }

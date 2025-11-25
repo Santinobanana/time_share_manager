@@ -467,6 +467,81 @@ export const getExchangeStats = async (userId) => {
   }
 };
 
+export const getAllExchangesForAdmin = async () => {
+  try {
+    // Obtener todos los intercambios ordenados por fecha de creación
+    const q = query(
+      collection(db, 'exchanges'),
+      orderBy('createdAt', 'desc')
+    );
+    
+    const querySnapshot = await getDocs(q);
+    const allExchanges = [];
+    
+    // Obtener datos de usuarios para cada intercambio
+    for (const docSnap of querySnapshot.docs) {
+      const exchangeData = docSnap.data();
+      
+      // Obtener información de los usuarios involucrados
+      const fromUserDoc = await getDoc(doc(db, 'users', exchangeData.fromUserId));
+      const toUserDoc = await getDoc(doc(db, 'users', exchangeData.toUserId));
+      
+      allExchanges.push({
+        id: docSnap.id,
+        ...exchangeData,
+        fromUser: fromUserDoc.exists() ? {
+          uid: fromUserDoc.id,
+          name: fromUserDoc.data().name,
+          email: fromUserDoc.data().email
+        } : null,
+        toUser: toUserDoc.exists() ? {
+          uid: toUserDoc.id,
+          name: toUserDoc.data().name,
+          email: toUserDoc.data().email
+        } : null
+      });
+    }
+    
+    // Clasificar por estado
+    return {
+      all: allExchanges,
+      pending: allExchanges.filter(e => e.status === 'pending'),
+      accepted: allExchanges.filter(e => e.status === 'accepted'),
+      rejected: allExchanges.filter(e => e.status === 'rejected'),
+      cancelled: allExchanges.filter(e => e.status === 'cancelled')
+    };
+  } catch (error) {
+    console.error('Error obteniendo todos los intercambios:', error);
+    throw new Error('Error al obtener todos los intercambios del sistema');
+  }
+};
+
+/**
+ * Obtener estadísticas globales de intercambios (solo para administradores)
+ * @returns {Promise<Object>}
+ */
+export const getGlobalExchangeStats = async () => {
+  try {
+    const querySnapshot = await getDocs(collection(db, 'exchanges'));
+    const exchanges = [];
+    
+    querySnapshot.forEach(doc => {
+      exchanges.push(doc.data());
+    });
+    
+    return {
+      total: exchanges.length,
+      pending: exchanges.filter(e => e.status === 'pending').length,
+      accepted: exchanges.filter(e => e.status === 'accepted').length,
+      rejected: exchanges.filter(e => e.status === 'rejected').length,
+      cancelled: exchanges.filter(e => e.status === 'cancelled').length
+    };
+  } catch (error) {
+    console.error('Error obteniendo estadísticas globales:', error);
+    throw new Error('Error al obtener estadísticas globales de intercambios');
+  }
+};
+
 export const checkDuplicateExchange = async (fromUserId, toUserId, fromWeek, toWeek) => {
   try {
     const q = query(

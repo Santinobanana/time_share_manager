@@ -14,7 +14,8 @@ import {
   User,
   RefreshCw,
   MessageSquare,
-  AlertCircle
+  AlertCircle,
+  Shield
 } from 'lucide-react';
 import {
   getUserExchanges,
@@ -25,7 +26,8 @@ import {
   cancelExchange,
   getExchangeStats,
   checkDuplicateExchange,
-  cancelAcceptedExchange
+  getAllExchangesForAdmin, // NUEVA FUNCIÓN
+  getGlobalExchangeStats // NUEVA FUNCIÓN
 } from '../services/exchangeService';
 import { getUserWeeksForYear } from '../services/titleService';
 import { getAllUsers } from '../services/userService';
@@ -36,8 +38,9 @@ export default function Exchanges() {
   const [error, setError] = useState(null);
   const [sentExchanges, setSentExchanges] = useState([]);
   const [receivedExchanges, setReceivedExchanges] = useState([]);
+  const [allExchanges, setAllExchanges] = useState([]); // NUEVO: Para vista de admin
   const [stats, setStats] = useState(null);
-  const [activeTab, setActiveTab] = useState('received');
+  const [activeTab, setActiveTab] = useState('received'); // received, sent, history, admin-all
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedExchange, setSelectedExchange] = useState(null);
@@ -54,9 +57,6 @@ export default function Exchanges() {
     message: ''
   });
 
-  // NUEVO: Estado para almacenar información de usuarios
-  const [usersMap, setUsersMap] = useState({});
-
   const currentYear = 2027;
 
   useEffect(() => {
@@ -70,27 +70,56 @@ export default function Exchanges() {
       setLoading(true);
       setError(null);
       
-      const [exchangesData, statsData, usersData] = await Promise.all([
-        getUserExchanges(user.uid),
-        getExchangeStats(user.uid),
-        getAllUsers()
-      ]);
+      // Si es administrador, cargar TODO
+      if (user.isAdmin) {
+        const [adminExchanges, globalStats, usersData] = await Promise.all([
+          getAllExchangesForAdmin(),
+          getGlobalExchangeStats(),
+          getAllUsers()
+        ]);
+        
+        setAllExchanges(adminExchanges.all || []);
+        setStats(globalStats);
+        
+        // También cargar intercambios propios del admin
+        const userExchanges = await getUserExchanges(user.uid);
+        setSentExchanges(userExchanges.sent || []);
+        setReceivedExchanges(userExchanges.received || []);
+        
+        const activeUsers = usersData.filter(u => 
+          u.isApproved && 
+          u.isActive && 
+          u.titles && 
+          u.titles.length > 0 &&
+          u.uid !== user.uid
+        );
+        setOtherUsers(activeUsers);
+        
+        // Establecer tab por defecto para admin
+        setActiveTab('admin-all');
+      } else {
+        // Usuario normal
+        const [exchangesData, statsData, usersData] = await Promise.all([
+          getUserExchanges(user.uid),
+          getExchangeStats(user.uid),
+          getAllUsers()
+        ]);
+        
+        setSentExchanges(exchangesData.sent || []);
+        setReceivedExchanges(exchangesData.received || []);
+        setStats(statsData);
+        
+        const activeUsers = usersData.filter(u => 
+          u.isApproved && 
+          u.isActive && 
+          u.titles && 
+          u.titles.length > 0 &&
+          u.uid !== user.uid
+        );
+        setOtherUsers(activeUsers);
+      }
       
-      setSentExchanges(exchangesData.sent || []);
-      setReceivedExchanges(exchangesData.received || []);
-      setStats(statsData);
-      
-      // NUEVO: Crear mapa de usuarios para acceso rápido
-      const usersMapping = {};
-      usersData.forEach(u => {
-        usersMapping[u.uid] = {
-          name: u.name,
-          email: u.email
-        };
-      });
-      setUsersMap(usersMapping);
-      
-      // Cargar semanas del usuario actual
+      // Cargar semanas del usuario actual (para crear intercambios)
       try {
         const weeksData = await getUserWeeksForYear(user.uid, currentYear);
         const weeksArray = weeksData.all || [];
@@ -99,16 +128,6 @@ export default function Exchanges() {
         console.error('Error cargando semanas del usuario:', weeksError);
         setMyWeeks([]);
       }
-      
-      // Filtrar solo usuarios activos con títulos (excluir usuario actual)
-      const activeUsers = usersData.filter(u => 
-        u.isApproved && 
-        u.isActive && 
-        u.titles && 
-        u.titles.length > 0 &&
-        u.uid !== user.uid
-      );
-      setOtherUsers(activeUsers);
     } catch (error) {
       console.error('Error cargando datos:', error);
       setError(error.message || 'Error al cargar los datos de intercambios');
@@ -234,14 +253,15 @@ export default function Exchanges() {
   };
 
   const handleCancel = async (exchangeId) => {
-    if (!confirm('¿Estás seguro de cancelar este intercambio? Esta acción lo revertirá y ambos usuarios recuperarán sus semanas originales.')) {
+    if (!confirm('¿Estás seguro de cancelar este intercambio?')) {
       return;
     }
 
     try {
       setSubmitting(true);
       await cancelExchange(exchangeId, user.uid);
-      alert('Intercambio cancelado y revertido exitosamente');
+      alert('Intercambio cancelado');
+      setShowDetailsModal(false);
       await loadData();
     } catch (error) {
       console.error('Error cancelando intercambio:', error);
@@ -249,57 +269,58 @@ export default function Exchanges() {
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const handlecancelAcceptedExchange = async (exchangeId) => {
-    if (!confirm('¿Estás seguro de cancelar este intercambio? Esta acción lo revertirá y ambos usuarios recuperarán sus semanas originales.')) {
-      return;
-    }
-
-    try {
-      setSubmitting(true);
-      await cancelAcceptedExchange(exchangeId, user.uid);
-      alert('Intercambio cancelado y revertido exitosamente');
-      await loadData();
-    } catch (error) {
-      console.error('Error cancelando intercambio:', error);
-      alert('Error al cancelar intercambio: ' + error.message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const getStatusBadge = (status) => {
-    const badges = {
-      pending: <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm font-medium flex items-center gap-1"><Clock size={14} /> Pendiente</span>,
-      accepted: <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium flex items-center gap-1"><CheckCircle size={14} /> Aceptado</span>,
-      rejected: <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm font-medium flex items-center gap-1"><XCircle size={14} /> Rechazado</span>,
-      cancelled: <span className="px-3 py-1 bg-gray-100 text-gray-800 rounded-full text-sm font-medium flex items-center gap-1"><XCircle size={14} /> Cancelado</span>
-    };
-    return badges[status] || badges.pending;
   };
 
   const getSerieColor = (titleId) => {
-    if (!titleId) return 'bg-gray-200';
-    const serie = titleId.charAt(0);
+    const serie = titleId?.charAt(0);
     return {
       'A': 'bg-serie-a',
       'B': 'bg-serie-b',
       'C': 'bg-serie-c',
       'D': 'bg-serie-d'
-    }[serie] || 'bg-gray-200';
+    }[serie] || 'bg-gray-100';
   };
 
-  // NUEVO: Función para obtener el nombre del usuario
-  const getUserName = (userId) => {
-    return usersMap[userId]?.name || 'Usuario desconocido';
+  const getStatusBadge = (status) => {
+    const styles = {
+      pending: 'bg-yellow-100 text-yellow-800',
+      accepted: 'bg-green-100 text-green-800',
+      rejected: 'bg-red-100 text-red-800',
+      cancelled: 'bg-gray-100 text-gray-800'
+    };
+
+    const icons = {
+      pending: <Clock size={16} />,
+      accepted: <CheckCircle size={16} />,
+      rejected: <XCircle size={16} />,
+      cancelled: <XCircle size={16} />
+    };
+
+    const labels = {
+      pending: 'Pendiente',
+      accepted: 'Aceptado',
+      rejected: 'Rechazado',
+      cancelled: 'Cancelado'
+    };
+
+    return (
+      <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${styles[status]}`}>
+        {icons[status]}
+        {labels[status]}
+      </span>
+    );
   };
 
-  const displayExchanges = activeTab === 'sent' ? sentExchanges : 
-                           activeTab === 'received' ? receivedExchanges :
-                           [...sentExchanges, ...receivedExchanges].filter(e => 
-                             e.status === 'accepted' || e.status === 'rejected' || e.status === 'cancelled'
-                           );
+  // Determinar qué intercambios mostrar según el tab activo
+  const displayExchanges = user.isAdmin && activeTab === 'admin-all' 
+    ? allExchanges 
+    : activeTab === 'sent' 
+    ? sentExchanges 
+    : activeTab === 'received' 
+    ? receivedExchanges
+    : [...sentExchanges, ...receivedExchanges].filter(e => 
+        e.status === 'accepted' || e.status === 'rejected' || e.status === 'cancelled'
+      );
 
   if (loading) {
     return (
@@ -316,8 +337,13 @@ export default function Exchanges() {
       {/* Header */}
       <div className="flex justify-between items-start mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Intercambios</h1>
-          <p className="text-gray-600 mt-1">Gestiona tus solicitudes de intercambio</p>
+          <h1 className="text-3xl font-bold text-gray-900">
+            Intercambios
+            {user.isAdmin && <Shield className="inline-block ml-2 text-purple-600" size={28} />}
+          </h1>
+          <p className="text-gray-600 mt-1">
+            {user.isAdmin ? 'Vista de administrador - Todos los intercambios del sistema' : 'Gestiona tus solicitudes de intercambio'}
+          </p>
         </div>
         <Button onClick={() => setShowCreateModal(true)}>
           <Send size={20} className="mr-2" />
@@ -348,7 +374,18 @@ export default function Exchanges() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {/* Tab exclusivo para administradores */}
+        {user.isAdmin && (
+          <Button
+            variant={activeTab === 'admin-all' ? 'primary' : 'secondary'}
+            onClick={() => setActiveTab('admin-all')}
+          >
+            <Shield size={18} className="mr-1" />
+            Todos ({allExchanges.length})
+          </Button>
+        )}
+        
         <Button
           variant={activeTab === 'received' ? 'primary' : 'secondary'}
           onClick={() => setActiveTab('received')}
@@ -381,6 +418,7 @@ export default function Exchanges() {
               {activeTab === 'received' && 'No tienes solicitudes recibidas'}
               {activeTab === 'sent' && 'No has enviado solicitudes'}
               {activeTab === 'history' && 'No tienes historial de intercambios'}
+              {activeTab === 'admin-all' && 'No hay intercambios en el sistema'}
             </p>
           </div>
         ) : (
@@ -388,7 +426,11 @@ export default function Exchanges() {
             {displayExchanges.map((exchange) => (
               <div
                 key={exchange.id}
-                className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
+                className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors cursor-pointer"
+                onClick={() => {
+                  setSelectedExchange(exchange);
+                  setShowDetailsModal(true);
+                }}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -399,36 +441,45 @@ export default function Exchanges() {
                       </span>
                     </div>
 
+                    {/* MOSTRAR USUARIOS EN VISTA DE ADMIN */}
+                    {user.isAdmin && activeTab === 'admin-all' && (
+                      <div className="flex items-center gap-4 mb-3 text-sm">
+                        <div className="flex items-center gap-2">
+                          <User size={16} className="text-gray-400" />
+                          <span className="font-medium text-gray-700">
+                            {exchange.fromUser?.name || 'Usuario desconocido'}
+                          </span>
+                        </div>
+                        <ArrowLeftRight size={16} className="text-gray-400" />
+                        <div className="flex items-center gap-2">
+                          <User size={16} className="text-gray-400" />
+                          <span className="font-medium text-gray-700">
+                            {exchange.toUser?.name || 'Usuario desconocido'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-2 gap-4">
                       {/* Semana ofrecida */}
                       <div>
                         <div className="text-sm text-gray-600 mb-1">
-                          {activeTab === 'received' ? 'Ofrece' : 'Ofreces'}
+                          {activeTab === 'received' || (user.isAdmin && activeTab === 'admin-all') ? 'Ofrece' : 'Ofreces'}
                         </div>
                         <div className={`${getSerieColor(exchange.fromWeek.titleId)} px-3 py-2 rounded-lg`}>
                           <div className="font-medium">Semana {exchange.fromWeek.weekNumber}</div>
                           <div className="text-sm">{exchange.fromWeek.titleId}</div>
-                          {/* NUEVO: Mostrar nombre del dueño */}
-                          <div className="text-xs mt-1 flex items-center gap-1 opacity-75">
-                            <User size={12} />
-                            {getUserName(exchange.fromUserId)}
-                          </div>
                         </div>
                       </div>
 
                       {/* Semana solicitada */}
                       <div>
                         <div className="text-sm text-gray-600 mb-1">
-                          {activeTab === 'received' ? 'Solicita' : 'Solicitas'}
+                          {activeTab === 'received' || (user.isAdmin && activeTab === 'admin-all') ? 'Solicita' : 'Solicitas'}
                         </div>
                         <div className={`${getSerieColor(exchange.toWeek.titleId)} px-3 py-2 rounded-lg`}>
                           <div className="font-medium">Semana {exchange.toWeek.weekNumber}</div>
                           <div className="text-sm">{exchange.toWeek.titleId}</div>
-                          {/* NUEVO: Mostrar nombre del dueño */}
-                          <div className="text-xs mt-1 flex items-center gap-1 opacity-75">
-                            <User size={12} />
-                            {getUserName(exchange.toUserId)}
-                          </div>
                         </div>
                       </div>
                     </div>
@@ -436,56 +487,36 @@ export default function Exchanges() {
                     {exchange.message && (
                       <div className="mt-3 flex items-start gap-2 text-sm text-gray-600">
                         <MessageSquare size={16} className="mt-0.5 flex-shrink-0" />
-                        <span className="italic">"{exchange.message}"</span>
+                        <p className="line-clamp-2">{exchange.message}</p>
                       </div>
                     )}
                   </div>
 
-                  {/* Acciones */}
-                  <div className="ml-4 flex flex-col gap-2">
-                    {activeTab === 'received' && exchange.status === 'pending' && (
-                      <>
-                        <Button
-                          size="sm"
-                          onClick={() => handleAccept(exchange.id)}
-                          disabled={submitting}
-                        >
-                          Aceptar
-                        </Button>
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          onClick={() => handleReject(exchange.id)}
-                          disabled={submitting}
-                        >
-                          Rechazar
-                        </Button>
-                      </>
-                    )}
-                    
-                    {activeTab === 'sent' && exchange.status === 'pending' && (
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => handleCancel(exchange.id)}
-                        disabled={submitting}
+                  {/* Acciones rápidas solo si es intercambio propio y pendiente */}
+                  {!user.isAdmin && activeTab === 'received' && exchange.status === 'pending' && (
+                    <div className="flex gap-2 ml-4">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAccept(exchange.id);
+                        }}
+                        className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                        title="Aceptar"
                       >
-                        Cancelar
-                      </Button>
-                    )}
-
-                    {/* Permitir cancelar intercambios aceptados */}
-                    {exchange.status === 'accepted' && (
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => handlecancelAcceptedExchange(exchange.id)}
-                        disabled={submitting}
+                        <CheckCircle size={20} />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleReject(exchange.id);
+                        }}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Rechazar"
                       >
-                        Cancelar y Revertir
-                      </Button>
-                    )}
-                  </div>
+                        <XCircle size={20} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -493,7 +524,7 @@ export default function Exchanges() {
         )}
       </Card>
 
-      {/* Modal crear intercambio */}
+      {/* Modal de creación - sin cambios */}
       <Modal
         isOpen={showCreateModal}
         onClose={() => {
@@ -502,10 +533,25 @@ export default function Exchanges() {
           setSelectedUser('');
           setSelectedUserWeeks([]);
         }}
-        title="Nueva solicitud de intercambio"
+        title="Nueva Solicitud de Intercambio"
       >
         <div className="space-y-4">
-          {/* Seleccionar tu semana */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Selecciona el usuario
+            </label>
+            <select
+              value={selectedUser}
+              onChange={(e) => handleUserSelect(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none"
+            >
+              <option value="">-- Selecciona un usuario --</option>
+              {otherUsers.map(u => (
+                <option key={u.uid} value={u.uid}>{u.name}</option>
+              ))}
+            </select>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Tu semana a intercambiar
@@ -513,72 +559,57 @@ export default function Exchanges() {
             <select
               value={createForm.myWeek}
               onChange={(e) => setCreateForm({ ...createForm, myWeek: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none"
             >
-              <option value="">Selecciona una semana</option>
-              {myWeeks.map((week, idx) => (
-                <option key={idx} value={`${week.titleId}-${week.weekNumber}`}>
-                  Semana {week.weekNumber} - {week.titleId} {week.type === 'special' && '⭐'}
+              <option value="">-- Selecciona tu semana --</option>
+              {myWeeks.map(week => (
+                <option key={`${week.titleId}-${week.weekNumber}`} value={`${week.titleId}-${week.weekNumber}`}>
+                  {week.titleId} - Semana {week.weekNumber}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Seleccionar usuario */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Usuario con quien intercambiar
+              Semana que solicitas
             </label>
             <select
-              value={selectedUser}
-              onChange={(e) => handleUserSelect(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none"
+              value={createForm.targetWeek}
+              onChange={(e) => setCreateForm({ ...createForm, targetWeek: e.target.value })}
+              disabled={!selectedUser}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none disabled:bg-gray-100"
             >
-              <option value="">Selecciona un usuario</option>
-              {otherUsers.map((u) => (
-                <option key={u.uid} value={u.uid}>
-                  {u.name} ({u.titles.length} título{u.titles.length > 1 ? 's' : ''})
+              <option value="">-- Selecciona la semana --</option>
+              {selectedUserWeeks.map(week => (
+                <option key={`${week.titleId}-${week.weekNumber}`} value={`${week.titleId}-${week.weekNumber}`}>
+                  {week.titleId} - Semana {week.weekNumber}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Seleccionar semana del otro usuario */}
-          {selectedUser && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Semana que solicitas
-              </label>
-              <select
-                value={createForm.targetWeek}
-                onChange={(e) => setCreateForm({ ...createForm, targetWeek: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none"
-              >
-                <option value="">Selecciona una semana</option>
-                {selectedUserWeeks.map((week, idx) => (
-                  <option key={idx} value={`${week.titleId}-${week.weekNumber}`}>
-                    Semana {week.weekNumber} - {week.titleId} {week.type === 'special' && '⭐'}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Mensaje opcional */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Mensaje (opcional)
             </label>
-            <Input
-              as="textarea"
-              rows={3}
+            <textarea
               value={createForm.message}
               onChange={(e) => setCreateForm({ ...createForm, message: e.target.value })}
-              placeholder="Explica por qué te gustaría hacer este intercambio..."
+              rows="3"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none resize-none"
+              placeholder="Añade un mensaje para el otro usuario..."
             />
           </div>
 
           <div className="flex gap-3 pt-4">
+            <Button
+              onClick={handleCreateExchange}
+              disabled={submitting || !createForm.myWeek || !createForm.targetWeek}
+              className="flex-1"
+            >
+              {submitting ? 'Enviando...' : 'Enviar Solicitud'}
+            </Button>
             <Button
               variant="secondary"
               onClick={() => {
@@ -591,15 +622,114 @@ export default function Exchanges() {
             >
               Cancelar
             </Button>
-            <Button
-              onClick={handleCreateExchange}
-              disabled={submitting || !createForm.myWeek || !createForm.targetWeek}
-              className="flex-1"
-            >
-              {submitting ? 'Enviando...' : 'Enviar Solicitud'}
-            </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Modal de detalles - agregar botones de admin si es necesario */}
+      <Modal
+        isOpen={showDetailsModal}
+        onClose={() => {
+          setShowDetailsModal(false);
+          setSelectedExchange(null);
+        }}
+        title="Detalles del Intercambio"
+      >
+        {selectedExchange && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              {getStatusBadge(selectedExchange.status)}
+              <span className="text-sm text-gray-500">
+                {new Date(selectedExchange.createdAt?.seconds * 1000).toLocaleString()}
+              </span>
+            </div>
+
+            {/* Información de usuarios (solo en vista admin) */}
+            {user.isAdmin && (
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <h4 className="font-medium text-purple-900 mb-2 flex items-center gap-2">
+                  <Shield size={16} />
+                  Información de Usuarios
+                </h4>
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <span className="text-gray-600">De: </span>
+                    <span className="font-medium">{selectedExchange.fromUser?.name}</span>
+                    <span className="text-gray-500 ml-2">({selectedExchange.fromUser?.email})</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Para: </span>
+                    <span className="font-medium">{selectedExchange.toUser?.name}</span>
+                    <span className="text-gray-500 ml-2">({selectedExchange.toUser?.email})</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-sm font-medium text-gray-600 mb-2">Ofrece</div>
+                <div className={`${getSerieColor(selectedExchange.fromWeek.titleId)} px-4 py-3 rounded-lg`}>
+                  <div className="font-bold text-lg">Semana {selectedExchange.fromWeek.weekNumber}</div>
+                  <div>{selectedExchange.fromWeek.titleId}</div>
+                </div>
+              </div>
+
+              <div>
+                <div className="text-sm font-medium text-gray-600 mb-2">Solicita</div>
+                <div className={`${getSerieColor(selectedExchange.toWeek.titleId)} px-4 py-3 rounded-lg`}>
+                  <div className="font-bold text-lg">Semana {selectedExchange.toWeek.weekNumber}</div>
+                  <div>{selectedExchange.toWeek.titleId}</div>
+                </div>
+              </div>
+            </div>
+
+            {selectedExchange.message && (
+              <div>
+                <div className="text-sm font-medium text-gray-600 mb-2">Mensaje</div>
+                <div className="bg-gray-50 rounded-lg p-3 text-gray-700">
+                  {selectedExchange.message}
+                </div>
+              </div>
+            )}
+
+            {/* Botones de acción */}
+            {!user.isAdmin && activeTab === 'received' && selectedExchange.status === 'pending' && (
+              <div className="flex gap-3 pt-4">
+                <Button
+                  onClick={() => handleAccept(selectedExchange.id)}
+                  disabled={submitting}
+                  className="flex-1 bg-green-600 hover:bg-green-700"
+                >
+                  <CheckCircle size={20} className="mr-2" />
+                  Aceptar
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => handleReject(selectedExchange.id)}
+                  disabled={submitting}
+                  className="flex-1"
+                >
+                  <XCircle size={20} className="mr-2" />
+                  Rechazar
+                </Button>
+              </div>
+            )}
+
+            {!user.isAdmin && activeTab === 'sent' && selectedExchange.status === 'pending' && (
+              <div className="pt-4">
+                <Button
+                  variant="secondary"
+                  onClick={() => handleCancel(selectedExchange.id)}
+                  disabled={submitting}
+                  className="w-full"
+                >
+                  Cancelar Solicitud
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
       </Modal>
     </div>
   );
