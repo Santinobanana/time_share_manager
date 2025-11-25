@@ -15,7 +15,7 @@ import {
  */
 const getFechaInicioSemana = (year, weekNumber) => {
   const inicioAno = startOfYear(new Date(year, 0, 1));
-  const diasHastaLunes = (8 - inicioAno.getDay()) % 7 || 7;
+  const diasHastaLunes = (7 - inicioAno.getDay()) % 7 || 7;
   const primerLunes = addDays(inicioAno, diasHastaLunes);
   const diasDesdeInicio = (weekNumber - 1) * 7;
   return addDays(primerLunes, diasDesdeInicio);
