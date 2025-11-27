@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth } from '../../context/AuthContext'; // AGREGADO
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Modal from '../../components/common/Modal';
 import PDFDownloadButton from '../../components/common/PDFDownloadButton';
 import { Sparkles } from 'lucide-react';
-import LeapWeekRaffleModal from '../../components/admin/LeapWeekRaffleModal';
+import AnnualWeeksCalendar from '../../components/admin/AnnualWeeksCalendar';
 import { 
   getAllTitles,
   getTitleById,
@@ -26,25 +26,78 @@ import { format, addDays, startOfYear } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 export default function AdminTitles() {
-  const { user } = useAuth();
+  const { user } = useAuth(); // AGREGADO
+  
   const [titles, setTitles] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSerie, setFilterSerie] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
-  const [selectedYear, setSelectedYear] = useState(2027);
+  const [selectedYear, setSelectedYear] = useState(null); // Se inicializará después
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedTitle, setSelectedTitle] = useState(null);
   const [titleOwner, setTitleOwner] = useState(null);
-  const [showLeapWeekModal, setShowLeapWeekModal] = useState(false);
+  const [showAnnualCalendar, setShowAnnualCalendar] = useState(false);
 
-
-  const years = [2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035, 2036, 2037, 2038];
+  // MODIFICADO: Generar años dinámicamente basado en los datos del título
+  const currentYear = new Date().getFullYear();
+  
+  // Calcular el primer año con datos (desde weeksByYear o specialWeeksByYear)
+  const getFirstYearWithData = () => {
+    if (titles.length === 0) return currentYear;
+    
+    // Obtener el primer título para revisar años
+    const sampleTitle = titles[0];
+    
+    // Años desde weeksByYear
+    const yearsInWeeksByYear = sampleTitle.weeksByYear 
+      ? Object.keys(sampleTitle.weeksByYear).map(Number)
+      : [];
+    
+    // Años desde specialWeeksByYear
+    const yearsInSpecialWeeks = sampleTitle.specialWeeksByYear
+      ? Object.keys(sampleTitle.specialWeeksByYear).map(Number)
+      : [];
+    
+    // Combinar ambos arrays
+    const allYears = [...yearsInWeeksByYear, ...yearsInSpecialWeeks];
+    
+    if (allYears.length === 0) return currentYear;
+    
+    // Retornar el menor año (primer año con datos)
+    return Math.min(...allYears);
+  };
+  
+  const firstDataYear = getFirstYearWithData();
+  
+  // Generar años desde el primer año con datos o año actual (el que sea mayor)
+  const startYear = Math.max(firstDataYear, currentYear);
+  const years = Array.from({ length: 12 }, (_, i) => startYear + i);
 
   useEffect(() => {
     loadData();
   }, []);
+
+  // Inicializar selectedYear cuando se cargan los títulos
+  useEffect(() => {
+    if (titles.length > 0 && selectedYear === null) {
+      const currentYear = new Date().getFullYear();
+      const sampleTitle = titles[0];
+      
+      const yearsInWeeksByYear = sampleTitle.weeksByYear 
+        ? Object.keys(sampleTitle.weeksByYear).map(Number)
+        : [];
+      
+      const allYears = yearsInWeeksByYear.filter(year => year >= currentYear);
+      
+      if (allYears.length > 0) {
+        setSelectedYear(Math.min(...allYears));
+      } else {
+        setSelectedYear(currentYear);
+      }
+    }
+  }, [titles, selectedYear]);
 
   const loadData = async () => {
     try {
@@ -65,12 +118,27 @@ export default function AdminTitles() {
   };
 
   /**
-   * Calcular fecha de inicio de semana (Domingo)
+   * Calcular fecha de inicio de semana (Domingo) - Sistema ISO
    */
   const getWeekStartDate = (year, weekNumber) => {
-    const firstDayOfYear = new Date(year, 0, 1);
+    // Para semana 51 en años bisiestos (última semana antes de Navidad)
+    // Esta es la semana que se rifa - generalmente alrededor del 12-18 de diciembre
+    if (weekNumber === 51) {
+      // Calcular basado en que Navidad es la semana 51
+      // Navidad (25 dic) suele estar en semana 52
+      // La semana 51 es del 12-18 diciembre aproximadamente
+      const christmas = new Date(year, 11, 25); // 25 de diciembre
+      const christmasDayOfWeek = christmas.getDay();
+      
+      // Retroceder al domingo de 2 semanas antes de Navidad
+      const daysToSunday = christmasDayOfWeek === 0 ? 14 : (christmasDayOfWeek + 7);
+      const week51Start = new Date(year, 11, 25 - daysToSunday);
+      
+      return format(week51Start, 'dd/MM', { locale: es });
+    }
     
-    // Encontrar el primer domingo del año
+    // Para semanas regulares, usar el cálculo basado en primer domingo
+    const firstDayOfYear = new Date(year, 0, 1);
     let primerDomingo = new Date(firstDayOfYear);
     const diaSemana = primerDomingo.getDay();
     
@@ -78,7 +146,6 @@ export default function AdminTitles() {
       primerDomingo.setDate(primerDomingo.getDate() + (7 - diaSemana));
     }
     
-    // Calcular la fecha de inicio de la semana
     const diasDesdeInicio = (weekNumber - 1) * 7;
     const weekStart = addDays(primerDomingo, diasDesdeInicio);
     
@@ -86,12 +153,23 @@ export default function AdminTitles() {
   };
 
   /**
-   * Calcular fecha de fin de semana (Sábado)
+   * Calcular fecha de fin de semana (Sábado) - Sistema ISO
    */
   const getWeekEndDate = (year, weekNumber) => {
-    const firstDayOfYear = new Date(year, 0, 1);
+    // Para semana 51 en años bisiestos
+    if (weekNumber === 51) {
+      const christmas = new Date(year, 11, 25);
+      const christmasDayOfWeek = christmas.getDay();
+      
+      // El sábado de la semana 51 (6 días después del domingo)
+      const daysToSunday = christmasDayOfWeek === 0 ? 14 : (christmasDayOfWeek + 7);
+      const week51End = new Date(year, 11, 25 - daysToSunday + 6);
+      
+      return format(week51End, 'dd/MM', { locale: es });
+    }
     
-    // Encontrar el primer domingo del año
+    // Para semanas regulares
+    const firstDayOfYear = new Date(year, 0, 1);
     let primerDomingo = new Date(firstDayOfYear);
     const diaSemana = primerDomingo.getDay();
     
@@ -99,7 +177,6 @@ export default function AdminTitles() {
       primerDomingo.setDate(primerDomingo.getDate() + (7 - diaSemana));
     }
     
-    // Calcular la fecha de fin de la semana (6 días después del inicio)
     const diasDesdeInicio = (weekNumber - 1) * 7 + 6;
     const weekEnd = addDays(primerDomingo, diasDesdeInicio);
     
@@ -137,12 +214,16 @@ export default function AdminTitles() {
   };
 
   const handleViewDetails = async (title) => {
-    setSelectedTitle(title);
+    // Primero enriquecer el título con semanas bisiestas
+    const { enrichTitleWithLeapWeeks } = await import('../../services/titleLeapWeeksHelper');
+    const enrichedTitle = await enrichTitleWithLeapWeeks(title);
+    
+    setSelectedTitle(enrichedTitle);
     setShowDetailsModal(true);
     
-    if (title.ownerId) {
+    if (enrichedTitle.ownerId) {
       try {
-        const owner = await getTitleOwner(title.id);
+        const owner = await getTitleOwner(enrichedTitle.id);
         setTitleOwner(owner);
       } catch (error) {
         console.error('Error cargando dueño:', error);
@@ -182,12 +263,12 @@ export default function AdminTitles() {
         </div>
 
         <Button 
-        onClick={() => setShowLeapWeekModal(true)}
-        className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700">
-        <Sparkles size={20} className="mr-2" />
-        Rifa de Semana Bisiesta
-  </Button>
-
+          onClick={() => setShowAnnualCalendar(true)}
+          className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+        >
+          <Sparkles size={20} className="mr-2" />
+          Rifa de Semana Bisiesta
+        </Button>
       </div>
 
       {/* Estadísticas */}
@@ -442,23 +523,48 @@ export default function AdminTitles() {
               </div>
             )}
 
-            {/* Semanas CON FECHAS */}
+            {/* Semanas CON FECHAS - UNA CARD POR SEMANA */}
             <div>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                Semanas Asignadas (Próximos años)
+                Semanas Asignadas (Próximos 12 años)
               </h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {years.slice(0, 12).map(year => {
+                {(() => {
+                  // Generar años dinámicamente basado en datos del título seleccionado
+                  const currentYear = new Date().getFullYear();
+                  
+                  // Obtener todos los años con datos
+                  const yearsInWeeksByYear = selectedTitle.weeksByYear 
+                    ? Object.keys(selectedTitle.weeksByYear).map(Number)
+                    : [];
+                  
+                  const yearsInSpecialWeeks = selectedTitle.specialWeeksByYear
+                    ? Object.keys(selectedTitle.specialWeeksByYear).map(Number)
+                    : [];
+                  
+                  const allAvailableYears = [...new Set([...yearsInWeeksByYear, ...yearsInSpecialWeeks])];
+                  
+                  // Filtrar años >= año actual
+                  const futureYears = allAvailableYears
+                    .filter(year => year >= currentYear)
+                    .sort((a, b) => a - b);
+                  
+                  // Tomar los primeros 12 años con datos
+                  const yearsToShow = futureYears.slice(0, 12);
+                  
+                  return yearsToShow.flatMap(year => {
+                  const weekCards = [];
                   const weekNumber = selectedTitle.weeksByYear?.[year];
-                  return (
-                    <div key={year} className="bg-gray-50 rounded-lg p-3">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-xs font-semibold text-gray-600">{year}</p>
-                        <p className="text-xl font-bold text-gray-900">
-                          {weekNumber || '-'}
-                        </p>
-                      </div>
-                      {weekNumber && (
+                  const specialWeeks = selectedTitle.specialWeeksByYear?.[year] || [];
+                  
+                  // Card de semana regular
+                  if (weekNumber) {
+                    weekCards.push(
+                      <div key={`${year}-regular`} className="bg-gray-50 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs font-semibold text-gray-600">{year}</p>
+                          <p className="text-xl font-bold text-gray-900">{weekNumber}</p>
+                        </div>
                         <div className="text-xs text-gray-600 space-y-1">
                           <div className="flex justify-between">
                             <span>Inicio:</span>
@@ -469,10 +575,55 @@ export default function AdminTitles() {
                             <span className="font-medium">{getWeekEndDate(year, weekNumber)}</span>
                           </div>
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
+                      </div>
+                    );
+                  }
+                  
+                  // Cards de semanas especiales (VIP y Bisiesta)
+                  specialWeeks.forEach((special, idx) => {
+                    const isVIP = ['NAVIDAD', 'FIN_ANO', 'SANTA', 'PASCUA'].includes(special.type);
+                    const isBisiesta = special.type === 'BISIESTA';
+                    
+                    weekCards.push(
+                      <div 
+                        key={`${year}-special-${idx}`} 
+                        className={`rounded-lg p-3 ${
+                          isBisiesta 
+                            ? 'bg-purple-50 border-2 border-purple-300' 
+                            : 'bg-orange-50 border-2 border-orange-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-1">
+                            <p className="text-xs font-semibold text-gray-600">{year}</p>
+                            {isBisiesta && <span className="text-purple-600">🎰</span>}
+                            {isVIP && <span className="text-orange-600">⭐</span>}
+                          </div>
+                          <p className="text-xl font-bold text-gray-900">{special.week}</p>
+                        </div>
+                        <div className="text-xs text-gray-600 space-y-1">
+                          <div className="flex justify-between">
+                            <span>Inicio:</span>
+                            <span className="font-medium">{getWeekStartDate(year, special.week)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Fin:</span>
+                            <span className="font-medium">{getWeekEndDate(year, special.week)}</span>
+                          </div>
+                        </div>
+                        <div className="mt-2 pt-2 border-t border-gray-300">
+                          <p className={`text-xs font-semibold ${
+                            isBisiesta ? 'text-purple-700' : 'text-orange-700'
+                          }`}>
+                            {isBisiesta ? '🎰 Semana 53 (Bisiesta)' : `⭐ Semana VIP`}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  });
+                  
+                  return weekCards;
+                })})()}
               </div>
             </div>
 
@@ -484,17 +635,19 @@ export default function AdminTitles() {
                 variant="primary"
                 size="md"
                 className="w-full"
-                label="Descargar calendario completo (48 años)"
+                label="Descargar calendario completo (hasta 2100)"
               />
             </div>
           </div>
         )}
       </Modal>
-      <LeapWeekRaffleModal
-        isOpen={showLeapWeekModal}
-        onClose={() => setShowLeapWeekModal(false)}
+
+      {/* Modal de Rifa de Semana Bisiesta */}
+      <AnnualWeeksCalendar
+        isOpen={showAnnualCalendar}
+        onClose={() => setShowAnnualCalendar(false)}
         onSuccess={() => {
-          setShowLeapWeekModal(false);
+          setShowAnnualCalendar(false);
           loadData();
         }}
         currentUserId={user?.uid}

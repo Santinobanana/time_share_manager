@@ -13,42 +13,41 @@ import { db } from '../config/firebase';
 
 /**
  * SERVICIO DE SEMANAS BISIESTAS (Leap Weeks)
+ * VERSIÓN MEJORADA CON AÑOS DINÁMICOS
  * 
  * Gestiona la asignación de semanas 53 en años bisiestos
  * donde el calendario tiene 53 semanas en lugar de 52
  */
 
 /**
- * Detectar años con 53 semanas (años bisiestos especiales)
- * @param {number} year - Año a verificar
- * @returns {boolean}
- */
-export const isLeapWeekYear = (year) => {
-  // Un año tiene 53 semanas si el 31 de diciembre cae en jueves
-  // o si el 1 de enero cae en jueves en un año bisiesto
-  const lastDayOfYear = new Date(year, 11, 31);
-  const firstDayOfYear = new Date(year, 0, 1);
-  
-  const lastDayWeekday = lastDayOfYear.getDay();
-  const firstDayWeekday = firstDayOfYear.getDay();
-  const isLeapYear = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
-  
-  return lastDayWeekday === 4 || (isLeapYear && firstDayWeekday === 4);
-};
-
-/**
  * Obtener todos los años con 53 semanas en un rango
- * @param {number} startYear 
- * @param {number} endYear 
+ * @param {number} startYear - Año inicial (por defecto: año actual)
+ * @param {number} endYear - Año final (por defecto: startYear + 76 años)
  * @returns {Array<number>}
  */
-export const getLeapWeekYears = (startYear = 2027, endYear = 2074) => {
-  const leapWeekYears = [];
+export const getLeapWeekYears = (startYear, endYear) => {
+  // Si no se proporciona startYear, usar el año actual
+  if (!startYear) {
+    startYear = new Date().getFullYear();
+  }
   
-  for (let year = startYear; year <= endYear; year++) {
-    if (isLeapWeekYear(year)) {
-      leapWeekYears.push(year);
-    }
+  // Si no se proporciona endYear, calcular 76 años adelante
+  if (!endYear) {
+    endYear = startYear + 76;
+  }
+  
+  const leapWeekYears = [];
+  const BASE_LEAP_YEAR = 2028; // Año base conocido con 53 semanas
+  
+  // Encontrar el primer año con 53 semanas >= startYear
+  let firstLeapYear = BASE_LEAP_YEAR;
+  while (firstLeapYear < startYear) {
+    firstLeapYear += 4;
+  }
+  
+  // Generar lista de años con 53 semanas (cada 4 años)
+  for (let year = firstLeapYear; year <= endYear; year += 4) {
+    leapWeekYears.push(year);
   }
   
   return leapWeekYears;
@@ -110,11 +109,6 @@ export const getAllLeapWeeks = async () => {
  */
 export const assignLeapWeek = async (year, titleId, assignmentMethod, assignedBy) => {
   try {
-    // Verificar que el año tenga 53 semanas
-    if (!isLeapWeekYear(year)) {
-      throw new Error(`El año ${year} no es un año con semana bisiesta (53 semanas)`);
-    }
-    
     // Verificar que el título existe
     const titleDoc = await getDoc(doc(db, 'titles', titleId));
     if (!titleDoc.exists()) {
@@ -127,11 +121,11 @@ export const assignLeapWeek = async (year, titleId, assignmentMethod, assignedBy
       assignmentMethod, // 'manual' o 'raffle'
       assignedBy, // UID del admin
       assignedAt: serverTimestamp(),
-      weekNumber: 53,
+      weekNumber: 51, // ✅ Semana 51 (última semana antes de Navidad)
       status: 'active'
     });
     
-    console.log(`Semana bisiesta del año ${year} asignada a ${titleId}`);
+    console.log(`✅ Semana bisiesta del año ${year} asignada a ${titleId}`);
   } catch (error) {
     console.error('Error asignando semana bisiesta:', error);
     throw error;
@@ -160,7 +154,7 @@ export const unassignLeapWeek = async (year) => {
       titleId: null
     });
     
-    console.log(`Semana bisiesta del año ${year} cancelada`);
+    console.log(`❌ Semana bisiesta del año ${year} cancelada`);
   } catch (error) {
     console.error('Error cancelando semana bisiesta:', error);
     throw error;
@@ -213,7 +207,11 @@ export const performRaffle = (titles) => {
 export const getUnassignedLeapWeekYears = async (limit = 10) => {
   try {
     const currentYear = new Date().getFullYear();
+    
+    // Obtener años bisiestos desde año actual hacia adelante
     const leapYears = getLeapWeekYears(currentYear, currentYear + 50);
+    
+    // Obtener asignaciones existentes
     const assignedLeapWeeks = await getAllLeapWeeks();
     const assignedYears = new Set(
       assignedLeapWeeks
@@ -221,6 +219,7 @@ export const getUnassignedLeapWeekYears = async (limit = 10) => {
         .map(lw => lw.year)
     );
     
+    // Filtrar solo años sin asignar y limitar cantidad
     const unassigned = leapYears
       .filter(year => !assignedYears.has(year))
       .slice(0, limit);
@@ -238,10 +237,15 @@ export const getUnassignedLeapWeekYears = async (limit = 10) => {
  */
 export const getLeapWeekStats = async () => {
   try {
-    const allLeapYears = getLeapWeekYears(2027, 2074);
+    const currentYear = new Date().getFullYear();
+    
+    // Obtener años bisiestos desde año actual hasta 2100
+    const allLeapYears = getLeapWeekYears(currentYear, 2100);
+    
+    // Obtener asignaciones activas
     const assignedLeapWeeks = await getAllLeapWeeks();
     const activeAssignments = assignedLeapWeeks.filter(
-      lw => lw.titleId && lw.status !== 'cancelled'
+      lw => lw.titleId && lw.status !== 'cancelled' && lw.year >= currentYear
     );
     
     return {

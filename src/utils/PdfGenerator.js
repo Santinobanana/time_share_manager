@@ -15,7 +15,7 @@ import {
  */
 const getFechaInicioSemana = (year, weekNumber) => {
   const inicioAno = startOfYear(new Date(year, 0, 1));
-  const diasHastaLunes = (7 - inicioAno.getDay()) % 7 || 7;
+  const diasHastaLunes = (8 - inicioAno.getDay()) % 7 || 7;
   const primerLunes = addDays(inicioAno, diasHastaLunes);
   const diasDesdeInicio = (weekNumber - 1) * 7;
   return addDays(primerLunes, diasDesdeInicio);
@@ -67,7 +67,8 @@ const generarDatosCalendario = (title, startYear = 2027, endYear = 2100) => {
         year,
         tipoSemana: tipoEspecial ? NOMBRES_SEMANAS_ESPECIALES[tipoEspecial] : 'Regular',
         fecha: `${format(fechaInicio, 'dd/MM', { locale: es })} - ${format(fechaFin, 'dd/MM/yyyy', { locale: es })}`,
-        esEspecial: !!tipoEspecial
+        esEspecial: !!tipoEspecial,
+        esBisiesta: false
       });
     }
 
@@ -77,11 +78,15 @@ const generarDatosCalendario = (title, startYear = 2027, endYear = 2100) => {
         const fechaInicio = getFechaInicioSemana(year, specialWeek.week);
         const fechaFin = getFechaFinSemana(year, specialWeek.week);
 
+        // Detectar si es semana bisiesta (tipo BISIESTA)
+        const esBisiesta = specialWeek.type === 'BISIESTA';
+
         datos.push({
           year,
-          tipoSemana: NOMBRES_SEMANAS_ESPECIALES[specialWeek.type],
+          tipoSemana: esBisiesta ? 'Rifa' : NOMBRES_SEMANAS_ESPECIALES[specialWeek.type],
           fecha: `${format(fechaInicio, 'dd/MM', { locale: es })} - ${format(fechaFin, 'dd/MM/yyyy', { locale: es })}`,
-          esEspecial: true
+          esEspecial: !esBisiesta, // VIP son especiales (naranja)
+          esBisiesta: esBisiesta   // Rifas son bisiestas (morado)
         });
       });
     }
@@ -107,58 +112,67 @@ const dividirEnPartes = (array, numPartes) => {
 };
 
 /**
- * Genera PDF con calendario de un título EN 2 COLUMNAS
+ * Genera PDF con calendario de un título EN UNA SOLA PÁGINA
+ * CON 4 COLUMNAS COMPACTAS
  * HASTA EL AÑO 2100
  */
 export const generarPDFTitulo = (title, userName = '') => {
   const doc = new jsPDF({
-    orientation: 'portrait',
+    orientation: 'landscape', // 🔄 Horizontal para más espacio
     unit: 'mm',
     format: 'letter'
   });
 
   const pageWidth = doc.internal.pageSize.width;
   const pageHeight = doc.internal.pageSize.height;
-  const margin = 12;
+  const margin = 8; // Márgenes más pequeños
   const usableWidth = pageWidth - (margin * 2);
 
-  // Título del documento
-  doc.setFontSize(18);
+  // Título del documento (más compacto)
+  doc.setFontSize(14);
   doc.setFont(undefined, 'bold');
-  doc.text(`Calendario Título ${title.id}`, pageWidth / 2, 15, { align: 'center' });
+  doc.text(`Calendario Título ${title.id}`, pageWidth / 2, 10, { align: 'center' });
 
-  // Información del título
-  doc.setFontSize(10);
+  // Información del título (más compacta)
+  doc.setFontSize(8);
   doc.setFont(undefined, 'normal');
-  doc.text(`Serie: ${title.serie} | Subserie: ${title.subserie} | Número: ${title.number}`, pageWidth / 2, 22, { align: 'center' });
+  doc.text(
+    `Serie: ${title.serie} | Subserie: ${title.subserie} | Número: ${title.number}`,
+    pageWidth / 2,
+    15,
+    { align: 'center' }
+  );
   
   if (userName) {
-    doc.text(`Propietario: ${userName}`, pageWidth / 2, 28, { align: 'center' });
+    doc.text(`Propietario: ${userName}`, pageWidth / 2, 19, { align: 'center' });
   }
 
-  doc.setFontSize(9);
-  doc.text('Calendario 2027 - 2100 (74 años)', pageWidth / 2, 34, { align: 'center' });
+  doc.setFontSize(7);
+  doc.text('Calendario 2027 - 2100 (74 años)', pageWidth / 2, 23, { align: 'center' });
 
   // Línea separadora
   doc.setDrawColor(200);
-  doc.line(margin, 38, pageWidth - margin, 38);
+  doc.line(margin, 25, pageWidth - margin, 25);
 
   // Generar datos (2027-2100 = 74 años)
   const datos = generarDatosCalendario(title);
 
-  // Dividir en 2 columnas
-  const columnas = dividirEnPartes(datos, 2);
+  // Dividir en 4 COLUMNAS para que quepa en 1 página
+  const columnas = dividirEnPartes(datos, 4);
   
   // Ancho de cada columna (con espacio entre ellas)
-  const espacioEntreColumnas = 6;
-  const anchoColumna = (usableWidth - espacioEntreColumnas) / 2;
+  const espacioEntreColumnas = 3;
+  const anchoColumna = (usableWidth - (espacioEntreColumnas * 3)) / 4;
   
   // Posiciones X de cada columna
-  const xColumna1 = margin;
-  const xColumna2 = margin + anchoColumna + espacioEntreColumnas;
+  const posicionesX = [
+    margin,
+    margin + anchoColumna + espacioEntreColumnas,
+    margin + (anchoColumna + espacioEntreColumnas) * 2,
+    margin + (anchoColumna + espacioEntreColumnas) * 3
+  ];
   
-  const posicionesX = [xColumna1, xColumna2];
-  const yInicio = 44;
+  const yInicio = 28;
 
   // Generar cada columna
   columnas.forEach((datosColumna, indexColumna) => {
@@ -181,28 +195,36 @@ export const generarPDFTitulo = (title, userName = '') => {
         fillColor: [66, 66, 66],
         textColor: 255,
         fontStyle: 'bold',
-        fontSize: 9,
+        fontSize: 7,
         halign: 'center',
-        cellPadding: 2.5
+        cellPadding: 1.5
       },
       alternateRowStyles: {
-        fillColor: [245, 245, 245]
+        fillColor: [248, 248, 248]
       },
       bodyStyles: {
-        fontSize: 8,
-        cellPadding: 2,
-        lineColor: [220, 220, 220],
+        fontSize: 6.5,
+        cellPadding: 1.2,
+        lineColor: [230, 230, 230],
         lineWidth: 0.1
       },
       columnStyles: {
-        0: { halign: 'center', cellWidth: anchoColumna * 0.22 },  // Año
-        1: { halign: 'left', cellWidth: anchoColumna * 0.40 },    // Tipo
-        2: { halign: 'left', cellWidth: anchoColumna * 0.38 }     // Fecha
+        0: { halign: 'center', cellWidth: anchoColumna * 0.20 },  // Año
+        1: { halign: 'left', cellWidth: anchoColumna * 0.35 },    // Tipo
+        2: { halign: 'left', cellWidth: anchoColumna * 0.45 }     // Fecha
       },
       didParseCell: function(data) {
         const rowData = datosColumna[data.row.index];
+        
+        // Colorear semanas especiales (VIP) en naranja
         if (rowData && rowData.esEspecial && data.column.index === 1) {
           data.cell.styles.textColor = [255, 140, 0];
+          data.cell.styles.fontStyle = 'bold';
+        }
+        
+        // Colorear semanas bisiestas (Rifa) en morado
+        if (rowData && rowData.esBisiesta && data.column.index === 1) {
+          data.cell.styles.textColor = [156, 39, 176];
           data.cell.styles.fontStyle = 'bold';
         }
       }
@@ -210,12 +232,12 @@ export const generarPDFTitulo = (title, userName = '') => {
   });
 
   // Footer
-  doc.setFontSize(8);
+  doc.setFontSize(6);
   doc.setTextColor(150);
   doc.text(
     `Generado el ${format(new Date(), 'dd/MM/yyyy HH:mm', { locale: es })}`,
     pageWidth / 2,
-    pageHeight - 6,
+    pageHeight - 4,
     { align: 'center' }
   );
 
@@ -223,13 +245,28 @@ export const generarPDFTitulo = (title, userName = '') => {
 };
 
 /**
+ * Descarga un PDF
+ */
+export const descargarPDF = (doc, filename) => {
+  doc.save(filename);
+};
+
+/**
+ * Función principal para generar y descargar PDF de un título
+ */
+export const generarYDescargarPDFTitulo = (title, userName = '') => {
+  const doc = generarPDFTitulo(title, userName);
+  const filename = `Calendario_${title.id}_${format(new Date(), 'yyyyMMdd')}.pdf`;
+  descargarPDF(doc, filename);
+};
+
+/**
  * Genera PDF con calendario de múltiples títulos
- * Cada título en su propia página con 2 columnas
- * HASTA EL AÑO 2100
+ * Cada título en su propia página horizontal con 4 columnas
  */
 export const generarPDFMultiplesTitulos = (titles, userName = '') => {
   const doc = new jsPDF({
-    orientation: 'portrait',
+    orientation: 'landscape',
     unit: 'mm',
     format: 'letter'
   });
@@ -237,7 +274,6 @@ export const generarPDFMultiplesTitulos = (titles, userName = '') => {
   const pageWidth = doc.internal.pageSize.width;
   const pageHeight = doc.internal.pageSize.height;
   const margin = 12;
-  const usableWidth = pageWidth - (margin * 2);
 
   // Primera página - portada
   doc.setFontSize(20);
@@ -263,7 +299,7 @@ export const generarPDFMultiplesTitulos = (titles, userName = '') => {
   doc.setFontSize(9);
   
   let yPos = 105;
-  const titulosPorColumna = Math.ceil(titles.length / 2);
+  const titulosPorColumna = Math.ceil(titles.length / 3);
   
   titles.forEach((title, index) => {
     const serieColor = {
@@ -275,54 +311,55 @@ export const generarPDFMultiplesTitulos = (titles, userName = '') => {
     
     doc.setTextColor(...serieColor);
     
-    // Dividir en dos columnas si hay muchos títulos
-    const xPos = index < titulosPorColumna ? pageWidth / 3 : (pageWidth * 2) / 3;
-    const yPosReal = index < titulosPorColumna ? yPos : yPos - (titulosPorColumna * 6);
+    // Dividir en tres columnas
+    const columna = Math.floor(index / titulosPorColumna);
+    const xPos = margin + 20 + (columna * 80);
+    const yPosReal = yPos + ((index % titulosPorColumna) * 6);
     
-    doc.text(`• ${title.id}`, xPos, yPosReal, { align: 'center' });
-    
-    if (index < titulosPorColumna) {
-      yPos += 6;
-    }
-    
-    // Nueva página si es necesario
-    if (yPos > pageHeight - 30 && index === titulosPorColumna - 1 && titles.length > titulosPorColumna * 2) {
-      doc.addPage();
-      yPos = 30;
-    }
+    doc.text(`• ${title.id}`, xPos, yPosReal);
   });
 
-  // Generar página para cada título
+  // Generar página para cada título (usando la función optimizada)
   titles.forEach((title, index) => {
     doc.addPage();
     
-    const espacioEntreColumnas = 6;
-    const anchoColumna = (usableWidth - espacioEntreColumnas) / 2;
+    const espacioEntreColumnas = 3;
+    const usableWidth = pageWidth - (margin * 2);
+    const anchoColumna = (usableWidth - (espacioEntreColumnas * 3)) / 4;
     
     // Header del título
-    doc.setFontSize(16);
+    doc.setFontSize(14);
     doc.setFont(undefined, 'bold');
     doc.setTextColor(66, 66, 66);
-    doc.text(`Título ${title.id}`, pageWidth / 2, 15, { align: 'center' });
-    
-    doc.setFontSize(9);
-    doc.setFont(undefined, 'normal');
-    doc.text(`Serie: ${title.serie} | Subserie: ${title.subserie} | Número: ${title.number}`, pageWidth / 2, 22, { align: 'center' });
+    doc.text(`Título ${title.id}`, pageWidth / 2, 10, { align: 'center' });
     
     doc.setFontSize(8);
-    doc.text('2027 - 2100 (74 años)', pageWidth / 2, 28, { align: 'center' });
+    doc.setFont(undefined, 'normal');
+    doc.text(
+      `Serie: ${title.serie} | Subserie: ${title.subserie} | Número: ${title.number}`,
+      pageWidth / 2,
+      15,
+      { align: 'center' }
+    );
+    
+    doc.setFontSize(7);
+    doc.text('Calendario 2027 - 2100 (74 años)', pageWidth / 2, 19, { align: 'center' });
     
     doc.setDrawColor(200);
-    doc.line(margin, 32, pageWidth - margin, 32);
+    doc.line(margin, 21, pageWidth - margin, 21);
 
-    // Generar datos y dividir en 2 columnas
+    // Generar datos y dividir en 4 columnas
     const datos = generarDatosCalendario(title);
-    const columnas = dividirEnPartes(datos, 2);
+    const columnas = dividirEnPartes(datos, 4);
     
-    const xColumna1 = margin;
-    const xColumna2 = margin + anchoColumna + espacioEntreColumnas;
-    const posicionesX = [xColumna1, xColumna2];
-    const yInicio = 38;
+    const posicionesX = [
+      margin,
+      margin + anchoColumna + espacioEntreColumnas,
+      margin + (anchoColumna + espacioEntreColumnas) * 2,
+      margin + (anchoColumna + espacioEntreColumnas) * 3
+    ];
+    
+    const yInicio = 24;
 
     // Generar tablas en columnas
     columnas.forEach((datosColumna, indexColumna) => {
@@ -345,28 +382,34 @@ export const generarPDFMultiplesTitulos = (titles, userName = '') => {
           fillColor: [66, 66, 66],
           textColor: 255,
           fontStyle: 'bold',
-          fontSize: 8,
+          fontSize: 7,
           halign: 'center',
-          cellPadding: 2
+          cellPadding: 1.5
         },
         alternateRowStyles: {
           fillColor: [248, 248, 248]
         },
         bodyStyles: {
-          fontSize: 7.5,
-          cellPadding: 1.8,
+          fontSize: 6.5,
+          cellPadding: 1.2,
           lineColor: [230, 230, 230],
           lineWidth: 0.1
         },
         columnStyles: {
-          0: { halign: 'center', cellWidth: anchoColumna * 0.22 },
-          1: { halign: 'left', cellWidth: anchoColumna * 0.40 },
-          2: { halign: 'left', cellWidth: anchoColumna * 0.38 }
+          0: { halign: 'center', cellWidth: anchoColumna * 0.20 },
+          1: { halign: 'left', cellWidth: anchoColumna * 0.35 },
+          2: { halign: 'left', cellWidth: anchoColumna * 0.45 }
         },
         didParseCell: function(data) {
           const rowData = datosColumna[data.row.index];
+          
           if (rowData && rowData.esEspecial && data.column.index === 1) {
             data.cell.styles.textColor = [255, 140, 0];
+            data.cell.styles.fontStyle = 'bold';
+          }
+          
+          if (rowData && rowData.esBisiesta && data.column.index === 1) {
+            data.cell.styles.textColor = [156, 39, 176];
             data.cell.styles.fontStyle = 'bold';
           }
         }
@@ -378,43 +421,25 @@ export const generarPDFMultiplesTitulos = (titles, userName = '') => {
   const pageCount = doc.internal.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
-    doc.setFontSize(7);
+    doc.setFontSize(6);
     doc.setTextColor(150);
     
-    if (i > 1) {
-      doc.text(
-        `Página ${i} de ${pageCount}`,
-        pageWidth / 2,
-        pageHeight - 10,
-        { align: 'center' }
-      );
-    }
+    doc.text(
+      `Página ${i} de ${pageCount}`,
+      pageWidth / 2,
+      pageHeight - 8,
+      { align: 'center' }
+    );
     
     doc.text(
       `Generado el ${format(new Date(), 'dd/MM/yyyy HH:mm', { locale: es })}`,
       pageWidth / 2,
-      pageHeight - 6,
+      pageHeight - 4,
       { align: 'center' }
     );
   }
 
   return doc;
-};
-
-/**
- * Descarga un PDF
- */
-export const descargarPDF = (doc, filename) => {
-  doc.save(filename);
-};
-
-/**
- * Función principal para generar y descargar PDF de un título
- */
-export const generarYDescargarPDFTitulo = (title, userName = '') => {
-  const doc = generarPDFTitulo(title, userName);
-  const filename = `Calendario_${title.id}_${format(new Date(), 'yyyyMMdd')}.pdf`;
-  descargarPDF(doc, filename);
 };
 
 /**

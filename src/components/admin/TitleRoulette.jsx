@@ -116,11 +116,12 @@ export default function TitleRoulette({ titles, onWinnerSelected, isSpinning }) 
         )}
       </div>
 
-      {/* Lista visual de títulos deslizándose (opcional) */}
+      {/* Lista visual de títulos deslizándose - TODOS los 48 títulos */}
       {isSpinning && (
         <div className="mt-4 overflow-hidden">
           <div className="flex gap-2 animate-scroll">
-            {titles.slice(0, 10).map((title, index) => (
+            {/* Duplicar el array completo para animación continua */}
+            {[...titles, ...titles].map((title, index) => (
               <div
                 key={`preview-${index}`}
                 className={`

@@ -12,9 +12,13 @@ export default function Dashboard() {
   const [userTitles, setUserTitles] = useState([]);
   const [userWeeks, setUserWeeks] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedYear, setSelectedYear] = useState(2027);
+  
+  // ✅ CORRECCIÓN 1: Usar año actual en lugar de 2027
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState(currentYear);
 
-  const years = [2027, 2028, 2029, 2030, 2031, 2032, 2033, 2034, 2035];
+  // ✅ Generar años dinámicamente desde año actual
+  const years = Array.from({ length: 12 }, (_, i) => currentYear + i);
 
   useEffect(() => {
     if (user) {
@@ -32,43 +36,73 @@ export default function Dashboard() {
         return;
       }
 
+      // Cargar títulos del usuario
       const titlesData = await getTitlesByUser(user.uid);
-      setUserTitles(titlesData);
+      
+      // ✅ CORRECCIÓN 2: Enriquecer títulos con semanas bisiestas
+      const { enrichTitleWithLeapWeeks } = await import('../services/titleLeapWeeksHelper');
+      const enrichedTitles = await Promise.all(
+        titlesData.map(title => enrichTitleWithLeapWeeks(title))
+      );
+      
+      setUserTitles(enrichedTitles);
 
+      // Cargar semanas del usuario para el año seleccionado
       const weeksData = await getUserWeeksForYear(user.uid, selectedYear);
+      
+      // ✅ Procesar semanas y agregar semanas bisiestas manualmente
+      let allWeeks = [];
       
       if (weeksData) {
         if (weeksData.all && Array.isArray(weeksData.all)) {
-          // Agregar fechas calculadas
-          const weeksWithDates = weeksData.all.map(week => ({
-            ...week,
-            startDate: getWeekStartDate(selectedYear, week.weekNumber),
-            endDate: getWeekEndDate(selectedYear, week.weekNumber)
-          }));
-          setUserWeeks(weeksWithDates);
+          allWeeks = weeksData.all;
         } else if (Array.isArray(weeksData)) {
-          const weeksWithDates = weeksData.map(week => ({
-            ...week,
-            startDate: getWeekStartDate(selectedYear, week.weekNumber),
-            endDate: getWeekEndDate(selectedYear, week.weekNumber)
-          }));
-          setUserWeeks(weeksWithDates);
+          allWeeks = weeksData;
         } else if (typeof weeksData === 'object') {
-          const allWeeks = [
+          allWeeks = [
             ...(weeksData.regular || []),
             ...(weeksData.special || [])
-          ].map(week => ({
-            ...week,
-            startDate: getWeekStartDate(selectedYear, week.weekNumber),
-            endDate: getWeekEndDate(selectedYear, week.weekNumber)
-          }));
-          setUserWeeks(allWeeks);
-        } else {
-          setUserWeeks([]);
+          ];
         }
-      } else {
-        setUserWeeks([]);
       }
+      
+      // ✅ NUEVO: Agregar semanas bisiestas de los títulos enriquecidos
+      enrichedTitles.forEach(title => {
+        if (title.specialWeeksByYear && title.specialWeeksByYear[selectedYear]) {
+          title.specialWeeksByYear[selectedYear].forEach(specialWeek => {
+            // Solo agregar si es semana bisiesta (BISIESTA)
+            if (specialWeek.type === 'BISIESTA') {
+              // Verificar que no esté ya en la lista
+              const exists = allWeeks.some(
+                w => w.titleId === title.id && w.weekNumber === specialWeek.week
+              );
+              
+              if (!exists) {
+                allWeeks.push({
+                  titleId: title.id,
+                  serie: title.serie,
+                  subserie: title.subserie,
+                  number: title.number,
+                  weekNumber: specialWeek.week,
+                  type: 'special',
+                  specialType: 'BISIESTA',
+                  specialName: 'Rifa'
+                });
+              }
+            }
+          });
+        }
+      });
+      
+      // Agregar fechas calculadas
+      const weeksWithDates = allWeeks.map(week => ({
+        ...week,
+        startDate: getWeekStartDate(selectedYear, week.weekNumber),
+        endDate: getWeekEndDate(selectedYear, week.weekNumber)
+      }));
+      
+      setUserWeeks(weeksWithDates);
+      
     } catch (error) {
       console.error('Error cargando datos del usuario:', error);
       setUserWeeks([]);
@@ -165,39 +199,30 @@ export default function Dashboard() {
           </div>
         </Card>
       ) : (
-        <>
+        <div className="space-y-8">
           {/* Próxima semana */}
           {nextWeek && (
-            <Card className="mb-8 bg-gradient-to-r from-gray-700 to-gray-800 text-white border-none">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Home className="text-white" size={24} />
-                    <h2 className="text-2xl font-bold">Tu próxima semana</h2>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-3xl font-bold">
+            <Card>
+              <div className="flex items-center gap-4">
+                <div className="bg-gray-700 rounded-full p-3">
+                  <Home size={24} className="text-white" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-sm text-gray-600">Tu próxima semana</h3>
+                  <div className="flex items-baseline gap-3 mt-1">
+                    <p className="text-3xl font-bold text-gray-900">
                       Semana {nextWeek.weekNumber}
                     </p>
-                    <p className="text-lg text-gray-300">
-                      🏠 Título: {nextWeek.titleId}
-                    </p>
-                    {nextWeek.startDate && (
-                      <p className="text-sm text-gray-300">
-                        📅 {nextWeek.startDate} - {nextWeek.endDate}
-                      </p>
-                    )}
-                    {nextWeek.type === 'special' && (
-                      <p className="text-sm bg-orange-500 inline-block px-3 py-1 rounded-full font-semibold">
-                        ⭐ {nextWeek.specialName || nextWeek.specialType}
-                      </p>
-                    )}
+                    <span className="text-gray-500">Año {selectedYear}</span>
                   </div>
-                </div>
-                <div className="text-right">
-                  <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-3">
-                    <p className="text-sm text-gray-200">Año</p>
-                    <p className="text-4xl font-bold">{selectedYear}</p>
+                  <div className="mt-2 flex items-center gap-4 text-sm text-gray-600">
+                    <span>🏠 Título: {nextWeek.titleId}</span>
+                    <span>📅 {nextWeek.startDate} - {nextWeek.endDate}</span>
+                    {nextWeek.type === 'special' && (
+                      <span className="text-orange-600 font-medium">
+                        ⭐ {nextWeek.specialName || 'Semana VIP'}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -205,10 +230,10 @@ export default function Dashboard() {
           )}
 
           {/* Selector de año */}
-          <Card className="mb-6">
+          <Card>
             <div className="flex items-center gap-4">
-              <Calendar className="text-gray-600" size={20} />
-              <label className="font-medium text-gray-700">Ver año:</label>
+              <Calendar size={20} className="text-gray-700" />
+              <label className="text-sm font-medium text-gray-700">Ver año:</label>
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(Number(e.target.value))}
@@ -222,7 +247,7 @@ export default function Dashboard() {
           </Card>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* ✅ CALENDARIO IMPLEMENTADO - Reemplaza el placeholder */}
+            {/* Calendario */}
             <Card title={`Calendario ${selectedYear}`}>
               <WeeksCalendar 
                 userWeeks={userWeeks} 
@@ -248,75 +273,62 @@ export default function Dashboard() {
 
                     const colorClass = getSerieColor(week.titleId || week);
                     const isSpecial = week.type === 'special';
+                    const isBisiesta = week.specialType === 'BISIESTA';
                     
                     return (
                       <div
                         key={`${week.titleId}-${week.weekNumber}-${index}`}
                         className={`${colorClass} rounded-lg p-4 flex items-center justify-between ${
-                          isSpecial ? 'ring-2 ring-orange-400' : ''
-                        }`}
+                          isSpecial ? 'border-l-4 border-orange-500' : ''
+                        } ${isBisiesta ? 'border-l-4 border-purple-500' : ''}`}
                       >
                         <div>
-                          <div className="flex items-center gap-2">
-                            <p className="font-semibold text-gray-900">
-                              Semana {week.weekNumber}
-                            </p>
-                            {isSpecial && (
-                              <span className="px-2 py-0.5 bg-orange-500 text-white text-xs font-bold rounded">
-                                VIP: {week.specialName || week.specialType}
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="font-bold text-lg">Semana {week.weekNumber}</p>
+                            {isBisiesta && (
+                              <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded-full">
+                                🎰 Rifa
+                              </span>
+                            )}
+                            {isSpecial && !isBisiesta && (
+                              <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-medium rounded-full">
+                                ⭐ VIP: {week.specialName || week.specialType}
                               </span>
                             )}
                           </div>
-                          <p className="text-sm text-gray-700 mt-1">
-                            Título: {week.titleId || 'N/A'}
+                          <p className="text-sm">Título: {week.titleId}</p>
+                          <p className="text-xs mt-1 opacity-75">
+                            📅 {week.startDate} - {week.endDate}
                           </p>
-                          {week.startDate && (
-                            <p className="text-xs text-gray-600 mt-1">
-                              📅 {week.startDate} - {week.endDate}
-                            </p>
-                          )}
                         </div>
                         <div className="text-right">
                           <p className="text-xs text-gray-600">
-                            {isSpecial ? '⭐ Especial' : 'Regular'}
+                            {isSpecial ? (isBisiesta ? 'Rifa' : 'Especial') : 'Regular'}
                           </p>
                         </div>
                       </div>
                     );
-                  }).filter(Boolean)}
+                  })}
                 </div>
               )}
             </Card>
           </div>
 
-          {/* Información adicional */}
-          <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card>
-              <div className="text-center">
-                <p className="text-3xl font-bold text-gray-900">
-                  {userTitles.length}
-                </p>
-                <p className="text-gray-600 mt-1">Título{userTitles.length !== 1 ? 's' : ''} en propiedad</p>
-              </div>
-            </Card>
-
-            <Card>
-              <div className="text-center">
-                <p className="text-3xl font-bold text-gray-900">0</p>
-                <p className="text-gray-600 mt-1">Intercambios pendientes</p>
-              </div>
-            </Card>
-
-            <Card>
-              <div className="text-center">
-                <p className="text-3xl font-bold text-gray-900">
-                  {userWeeks.length}
-                </p>
-                <p className="text-gray-600 mt-1">Semanas este año</p>
-              </div>
-            </Card>
-          </div>
-        </>
+          {/* Resumen de títulos */}
+          <Card title="Tus títulos">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {userTitles.map((title) => (
+                <div
+                  key={title.id}
+                  className={`${getSerieColor(title)} rounded-lg p-4 text-center`}
+                >
+                  <Home size={24} className="mx-auto mb-2" />
+                  <p className="font-bold">{title.id}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
       )}
     </div>
   );
