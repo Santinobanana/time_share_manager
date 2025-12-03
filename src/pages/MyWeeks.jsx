@@ -8,6 +8,12 @@ import { addDays, startOfYear, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
+import {
+  getFechaInicioSemana,
+  getFechaFinSemana,
+  calcularSemanasEspeciales,
+  NOMBRES_SEMANAS_ESPECIALES
+} from '../services/weekCalculationService';
 
 export default function MyWeeks() {
   const { user } = useAuth();
@@ -49,15 +55,15 @@ export default function MyWeeks() {
       if (weeksData && weeksData.all && Array.isArray(weeksData.all)) {
         const weeksWithDates = weeksData.all.map(week => ({
           ...week,
-          startDate: getWeekStartDate(selectedYear, week.weekNumber),
-          endDate: getWeekEndDate(selectedYear, week.weekNumber)
+          startDate: format(getFechaInicioSemana(selectedYear, week.weekNumber), 'dd/MM', { locale: es }),
+          endDate: format(getFechaFinSemana(selectedYear, week.weekNumber), 'dd/MM/yyyy', { locale: es })
         }));
         setUserWeeks(weeksWithDates);
       } else if (Array.isArray(weeksData)) {
         const weeksWithDates = weeksData.map(week => ({
           ...week,
-          startDate: getWeekStartDate(selectedYear, week.weekNumber),
-          endDate: getWeekEndDate(selectedYear, week.weekNumber)
+          startDate: format(getFechaInicioSemana(selectedYear, week.weekNumber), 'dd/MM', { locale: es }),
+          endDate: format(getFechaFinSemana(selectedYear, week.weekNumber), 'dd/MM/yyyy', { locale: es })
         }));
         setUserWeeks(weeksWithDates);
       } else {
@@ -69,30 +75,6 @@ export default function MyWeeks() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const getWeekStartDate = (year, weekNumber) => {
-    const firstDayOfYear = startOfYear(new Date(year, 0, 1));
-    const daysToAdd = (weekNumber - 1) * 7;
-    const weekStart = addDays(firstDayOfYear, daysToAdd);
-    
-    const dayOfWeek = weekStart.getDay();
-    const daysUntilMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    const monday = addDays(weekStart, daysUntilMonday);
-    
-    return format(monday, 'dd/MM/yyyy', { locale: es });
-  };
-
-  const getWeekEndDate = (year, weekNumber) => {
-    const firstDayOfYear = startOfYear(new Date(year, 0, 1));
-    const daysToAdd = (weekNumber - 1) * 7 + 6;
-    const weekEnd = addDays(firstDayOfYear, daysToAdd);
-    
-    const dayOfWeek = weekEnd.getDay();
-    const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
-    const sunday = addDays(weekEnd, daysUntilSunday);
-    
-    return format(sunday, 'dd/MM/yyyy', { locale: es });
   };
 
   const getSerieColor = (titleId) => {

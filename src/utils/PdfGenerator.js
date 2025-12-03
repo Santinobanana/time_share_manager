@@ -4,47 +4,14 @@ import { applyPlugin } from 'jspdf-autotable';
 applyPlugin(jsPDF);
 import { format, startOfYear, addDays } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { 
-  calcularPascua, 
+import {
+  calcularPascua,
   obtenerNumeroSemana,
-  NOMBRES_SEMANAS_ESPECIALES 
-} from './specialweeks';
-
-/**
- * Calcula la fecha de inicio de una semana específica en un año
- */
-const getFechaInicioSemana = (year, weekNumber) => {
-  const inicioAno = startOfYear(new Date(year, 0, 1));
-  const diasHastaLunes = (8 - inicioAno.getDay()) % 7 || 7;
-  const primerLunes = addDays(inicioAno, diasHastaLunes);
-  const diasDesdeInicio = (weekNumber - 1) * 7;
-  return addDays(primerLunes, diasDesdeInicio);
-};
-
-/**
- * Calcula la fecha de fin de una semana específica en un año
- */
-const getFechaFinSemana = (year, weekNumber) => {
-  const inicioSemana = getFechaInicioSemana(year, weekNumber);
-  return addDays(inicioSemana, 6);
-};
-
-/**
- * Obtiene información de semanas especiales para un año
- */
-const getSemanasEspecialesDelAno = (year) => {
-  const pascua = calcularPascua(year);
-  const semanaSanta = new Date(pascua);
-  semanaSanta.setDate(semanaSanta.getDate() - 7);
-
-  const semanasEspeciales = {};
-  semanasEspeciales[obtenerNumeroSemana(semanaSanta)] = 'SANTA';
-  semanasEspeciales[obtenerNumeroSemana(pascua)] = 'PASCUA';
-  semanasEspeciales[51] = 'NAVIDAD';
-  semanasEspeciales[52] = 'FIN_ANO';
-
-  return semanasEspeciales;
-};
+  NOMBRES_SEMANAS_ESPECIALES,
+  getFechaInicioSemana,
+  getFechaFinSemana,
+  calcularSemanasEspeciales as getSemanasEspecialesDelAno
+} from '../services/weekCalculationService';
 
 /**
  * Genera datos de calendario para un título en un rango de años

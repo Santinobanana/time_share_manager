@@ -3,14 +3,16 @@ import { X, Calendar, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { addDays, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import jsPDF from 'jspdf';
+import {
+  obtenerNumeroSemana,
+  calcularSemanasEspeciales,
+  getTotalWeeksInYear,
+  has53Weeks,
+  crearMapeoSemanasDisponibles,
+  SERIE_COLORS,
+  SERIE_COLORS_RGB
+} from '../../services/weekCalculationService';
 
-/**
- * Años con 53 semanas según ISO 8601 (2027-2100)
- */
-const YEARS_WITH_53_WEEKS = [
-  2032, 2037, 2043, 2048, 2054, 2060, 2065, 2071, 2076, 2082,
-  2088, 2093, 2099
-];
 
 /**
  * Nombres de meses en español
@@ -21,16 +23,6 @@ const MONTH_NAMES = [
 ];
 
 /**
- * Colores por serie
- */
-const SERIE_COLORS = {
-  'A': 'bg-green-200',
-  'B': 'bg-blue-200', 
-  'C': 'bg-yellow-200',
-  'D': 'bg-purple-200'
-};
-
-/**
  * Modal de Calendario Anual de Semanas
  */
 export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onSuccess, currentUserId }) {
@@ -39,18 +31,34 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
   const [selectedYear, setSelectedYear] = useState(initialYear);
   const [isDownloading, setIsDownloading] = useState(false);
   
+  
+  // Nuevo estado para almacenar el conteo de semanas por serie
+  const [serieWeekCounts, setSerieWeekCounts] = useState({ A: 0, B: 0, C: 0, D: 0 });
+
+  const totalWeeks = has53Weeks(selectedYear) ? 53 : 52;
+  console.log(totalWeeks) 
+
+
   useEffect(() => {
     if (year) {
       setSelectedYear(year);
     }
   }, [year]);
 
+
+  
+  // Ejecutar el cálculo de conteo cada vez que cambia el año o los títulos
+  useEffect(() => {
+    if (isOpen) {
+      const assignments = getWeekAssignments();
+      setSerieWeekCounts(getSerieWeekCounts(assignments));
+    }
+  }, [selectedYear, titles, isOpen, totalWeeks]); // Incluir totalWeeks en dependencias
+
   // ✅ AHORA SÍ el return condicional
   if (!isOpen) return null;
 
   const titlesList = titles || [];
-  const has53Weeks = YEARS_WITH_53_WEEKS.includes(selectedYear);
-  const totalWeeks = has53Weeks ? 53 : 52;
   
   const getAvailableYears = () => {
     const currentYear = new Date().getFullYear();
@@ -88,6 +96,22 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
   const isLastYear = selectedYear === availableYears[availableYears.length - 1];
 
   /**
+   * FUNCIÓN NUEVA: Calcula el resumen de semanas asignadas por serie.
+   */
+  const getSerieWeekCounts = (assignments) => {
+    const counts = { A: 0, B: 0, C: 0, D: 0 };
+    
+    // Contar solo las semanas que tienen un título asignado y una serie válida
+    Object.values(assignments).forEach(assignment => {
+      if (assignment.title && assignment.serie && counts.hasOwnProperty(assignment.serie)) {
+        counts[assignment.serie]++;
+      }
+    });
+    
+    return counts;
+  };
+
+  /**
    * Descargar calendario como PDF generado directamente
    */
   const handleDownloadPDF = () => {
@@ -106,9 +130,12 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
       pdf.setFont('helvetica', 'bold');
       pdf.text(`Calendario de Semanas ${selectedYear}`, pageWidth / 2, margin + 5, { align: 'center' });
       
+      // MOSTRAR CONTEO EN EL PDF
+      const countSummary = `Semanas asignadas: A: ${serieWeekCounts.A} | B: ${serieWeekCounts.B} | C: ${serieWeekCounts.C} | D: ${serieWeekCounts.D}`;
+
       pdf.setFontSize(10);
       pdf.setFont('helvetica', 'normal');
-      pdf.text(`${totalWeeks} semanas • ${titlesList.length} títulos asignados`, pageWidth / 2, margin + 12, { align: 'center' });
+      pdf.text(`${totalWeeks} semanas • ${countSummary}`, pageWidth / 2, margin + 12, { align: 'center' });
       
       // Calcular dimensiones del grid (3 columnas x 4 filas para 12 meses)
       const cols = 3;
@@ -151,6 +178,9 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
         const monthWeeks = [];
         for (let week = 1; week <= totalWeeks; week++) {
           const days = getWeekDays(week);
+          // Nota: La lógica del PDF asume que el Lunes (dayOfWeek === 1) determina el mes
+          // Si el calendario usa Domingo (0) para determinar el mes, es un error de lógica.
+          // Basado en el `AnnualWeeksCalendar.jsx` original, usa el Lunes:
           const monday = days.find(d => d.dayOfWeek === 1) || days[0];
           
           if (monday.month === monthIndex) {
@@ -256,10 +286,12 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
   const getWeekAssignments = () => {
     const assignments = {};
 
+    // 💥 CORRECCIÓN: Inicializar el objeto hasta totalWeeks (52 o 53)
     for (let week = 1; week <= totalWeeks; week++) {
       assignments[week] = {
         weekNumber: week,
         title: null,
+        serie: null, // Asegurar que serie es null por defecto
         isSpecial: false,
         specialType: null
       };
@@ -271,9 +303,10 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
     }
 
     titlesList.forEach(title => {
+      // Asignación de semana regular
       if (title.weeksByYear && title.weeksByYear[selectedYear]) {
         const weekNum = title.weeksByYear[selectedYear];
-        if (!assignments[weekNum].title) {
+        if (assignments[weekNum] && !assignments[weekNum].title) {
           assignments[weekNum] = {
             weekNumber: weekNum,
             title: title.id,
@@ -284,27 +317,26 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
         }
       }
 
+      // Asignación de semanas especiales (VIP/Bisiesta)
       if (title.specialWeeksByYear && title.specialWeeksByYear[selectedYear]) {
         title.specialWeeksByYear[selectedYear].forEach(special => {
           const weekNum = special.week;
           
-          if (weekNum === 53) {
-            assignments[weekNum] = {
-              weekNumber: weekNum,
-              title: title.id,
-              serie: title.serie,
-              isSpecial: true,
-              specialType: 'WEEK_53',
-              isManual: true
-            };
-          } else if (!assignments[weekNum].title) {
-            assignments[weekNum] = {
-              weekNumber: weekNum,
-              title: title.id,
-              serie: title.serie,
-              isSpecial: true,
-              specialType: special.type
-            };
+          // Verificar explícitamente si assignments[weekNum] existe antes de acceder a .title
+          if (assignments[weekNum]) {
+             // La lógica aquí parece dar prioridad a la semana regular sobre la especial
+             // si ya hay un título asignado.
+             if (!assignments[weekNum].title || special.type === 'BISIESTA' || special.type === 'WEEK_53') {
+                // Si no hay título, o si es una Bisiesta (que debe sobrescribir), asignar.
+               assignments[weekNum] = {
+                 weekNumber: weekNum,
+                 title: title.id,
+                 serie: title.serie,
+                 isSpecial: true,
+                 specialType: special.type,
+                 isManual: special.type === 'WEEK_53' || special.type === 'BISIESTA'
+               };
+             }
           }
         });
       }
@@ -314,6 +346,7 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
   };
 
   const getWeekDays = (weekNumber) => {
+    // Esta lógica de fechas es la misma que la de AdminTitles/PdfGenerator (Domingo-Sábado)
     const firstDayOfYear = new Date(selectedYear, 0, 1);
     const firstDayWeekday = firstDayOfYear.getDay();
     
@@ -335,21 +368,27 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
         date: day,
         day: format(day, 'd'),
         month: day.getMonth(),
-        dayOfWeek: day.getDay()
+        dayOfWeek: day.getDay() // 0=Domingo, 6=Sábado
       });
     }
     
     return days;
   };
 
-  const groupWeeksByMonth = () => {
+const groupWeeksByMonth = () => {
     const assignments = getWeekAssignments();
     const monthGroups = Array(12).fill(null).map(() => []);
 
     for (let week = 1; week <= totalWeeks; week++) {
       const days = getWeekDays(week);
+      
+      // La lógica original usa el LUNES (dayOfWeek === 1) o el Domingo si no hay Lunes
       const monday = days.find(d => d.dayOfWeek === 1) || days[0];
-      const monthIndex = monday.month;
+      let monthIndex = monday.month;
+      
+      if (week >= 52 && monthIndex === 0) { // monthIndex 0 es Enero
+        monthIndex = 11;
+      }
       
       monthGroups[monthIndex].push({
         ...assignments[week],
@@ -366,13 +405,19 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
       'FIN_ANO': '🎆 Fin Año',
       'SANTA': '✝️ Santa',
       'PASCUA': '🐰 Pascua',
-      'WEEK_53': '✋ Manual'
+      'WEEK_53': '✋ Manual',
+      'BISIESTA': '🎰 Rifa' // Asumo que BISIESTA es Rifa
     };
     return labels[specialType] || '';
   };
 
   const monthGroups = groupWeeksByMonth();
 
+
+  
+  // ----------------------------------------------------------------------
+  // RENDERIZADO
+  // ----------------------------------------------------------------------
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg w-full max-w-7xl max-h-[90vh] flex flex-col">
@@ -384,8 +429,14 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
               <h2 className="text-2xl font-bold text-gray-900">
                 Calendario de Semanas
               </h2>
+              {/* Contenido solicitado */}
               <p className="text-sm text-gray-600">
-                {totalWeeks} semanas • {titlesList.length} títulos asignados
+                {totalWeeks} semanas • 
+                <span className="ml-2 font-bold text-gray-800">Semanas Asignadas:</span>
+                <span className="ml-1 text-green-600">A: {serieWeekCounts.A}</span>
+                <span className="ml-1 text-blue-600">B: {serieWeekCounts.B}</span>
+                <span className="ml-1 text-yellow-600">C: {serieWeekCounts.C}</span>
+                <span className="ml-1 text-purple-600">D: {serieWeekCounts.D}</span>
               </p>
             </div>
           </div>
@@ -558,9 +609,10 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
               <div className="w-4 h-4 bg-purple-200 rounded"></div>
               <span>Serie D</span>
             </div>
-            {has53Weeks && (
+            {/* Mostrar leyenda de Semana 53 si aplica */}
+            {totalWeeks == 53 && (
               <div className="flex items-center gap-2 ml-4 border-l pl-4">
-                <span className="font-bold text-orange-600">✋ Semana 53: Asignación Manual</span>
+                <span className="font-bold text-orange-600">🎰 Semana 53 </span>
               </div>
             )}
           </div>

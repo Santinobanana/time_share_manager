@@ -24,6 +24,11 @@ import {
 } from 'lucide-react';
 import { format, addDays, startOfYear } from 'date-fns';
 import { es } from 'date-fns/locale';
+import {
+  getFechaInicioSemana,
+  getFechaFinSemana
+} from '../../services/weekCalculationService';
+
 
 export default function AdminTitles() {
   const { user } = useAuth();
@@ -66,58 +71,6 @@ export default function AdminTitles() {
     } finally {
       setLoading(false);
     }
-  };
-
-  /**
-   * Calcular fecha de inicio de semana (Domingo) - Sistema ISO
-   */
-  const getWeekStartDate = (year, weekNumber) => {
-    if (weekNumber === 51) {
-      const christmas = new Date(year, 11, 25);
-      const christmasDayOfWeek = christmas.getDay();
-      const daysToSunday = christmasDayOfWeek === 0 ? 14 : (christmasDayOfWeek + 7);
-      const week51Start = new Date(year, 11, 25 - daysToSunday);
-      return format(week51Start, 'dd/MM', { locale: es });
-    }
-    
-    const firstDayOfYear = new Date(year, 0, 1);
-    let primerDomingo = new Date(firstDayOfYear);
-    const diaSemana = primerDomingo.getDay();
-    
-    if (diaSemana !== 0) {
-      primerDomingo.setDate(primerDomingo.getDate() + (7 - diaSemana));
-    }
-    
-    const diasDesdeInicio = (weekNumber - 1) * 7;
-    const weekStart = addDays(primerDomingo, diasDesdeInicio);
-    
-    return format(weekStart, 'dd/MM', { locale: es });
-  };
-
-  /**
-   * Calcular fecha de fin de semana (Sábado) - Sistema ISO
-   */
-  const getWeekEndDate = (year, weekNumber) => {
-    if (weekNumber === 51) {
-      const christmas = new Date(year, 11, 25);
-      const christmasDayOfWeek = christmas.getDay();
-      const daysToSunday = christmasDayOfWeek === 0 ? 14 : (christmasDayOfWeek + 7);
-      const week51End = new Date(year, 11, 25 - daysToSunday + 6);
-      return format(week51End, 'dd/MM', { locale: es });
-    }
-    
-    const firstDayOfYear = new Date(year, 0, 1);
-    let primerDomingo = new Date(firstDayOfYear);
-    const diaSemana = primerDomingo.getDay();
-    
-    if (diaSemana !== 0) {
-      primerDomingo.setDate(primerDomingo.getDate() + (7 - diaSemana));
-    }
-    
-    const diasDesdeInicio = (weekNumber - 1) * 7 + 6;
-    const weekEnd = addDays(primerDomingo, diasDesdeInicio);
-    
-    return format(weekEnd, 'dd/MM', { locale: es });
   };
 
   const filteredTitles = titles.filter(title => {
@@ -499,11 +452,11 @@ export default function AdminTitles() {
                           <div className="text-xs text-gray-600 space-y-1">
                             <div className="flex justify-between">
                               <span>Inicio:</span>
-                              <span className="font-medium">{getWeekStartDate(year, weekNumber)}</span>
+                              <span className="font-medium">{format(getFechaInicioSemana(year, weekNumber), 'dd/MM', { locale: es })}</span>
                             </div>
                             <div className="flex justify-between">
                               <span>Fin:</span>
-                              <span className="font-medium">{getWeekEndDate(year, weekNumber)}</span>
+                              <span className="font-medium">{format(getFechaFinSemana(year, weekNumber), 'dd/MM/yyyy', { locale: es })}</span>
                             </div>
                           </div>
                         </div>
@@ -534,11 +487,11 @@ export default function AdminTitles() {
                           <div className="text-xs text-gray-600 space-y-1">
                             <div className="flex justify-between">
                               <span>Inicio:</span>
-                              <span className="font-medium">{getWeekStartDate(year, special.week)}</span>
+                              <span className="font-medium">{format(getFechaInicioSemana(year, special.week), 'dd/MM', { locale: es })}</span>
                             </div>
                             <div className="flex justify-between">
                               <span>Fin:</span>
-                              <span className="font-medium">{getWeekEndDate(year, special.week)}</span>
+                              <span className="font-medium">{format(getFechaFinSemana(year, special.week), 'dd/MM/yyyy', { locale: es })}</span>
                             </div>
                           </div>
                           <div className="mt-2 pt-2 border-t border-gray-300">

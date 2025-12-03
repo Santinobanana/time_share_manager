@@ -73,11 +73,21 @@ function calcularSemanasEspeciales(year) {
   const semanaSanta = new Date(pascua);
   semanaSanta.setDate(semanaSanta.getDate() - 7);
   
-  // Calcular Navidad (semana del 25 de diciembre)
+  // ✅ CORRECCIÓN: Si el 25 es domingo, usar semana anterior
   const navidad = new Date(year, 11, 25);
-  const semanaNavidad = obtenerNumeroSemana(navidad);
+  const diaSemana25 = navidad.getDay(); // 0 = Domingo
   
-  // Calcular Fin de Año (semana del 31 de diciembre)
+  let fechaNavidadVIP;
+  if (diaSemana25 === 0) {
+    // 25 es domingo → Usar semana anterior (18-24)
+    fechaNavidadVIP = new Date(year, 11, 18);
+  } else {
+    // 25 NO es domingo → Usar semana del 25
+    fechaNavidadVIP = navidad;
+  }
+  
+  const semanaNavidad = obtenerNumeroSemana(fechaNavidadVIP);
+  
   const finAno = new Date(year, 11, 31);
   const semanaFinAno = obtenerNumeroSemana(finAno);
   
@@ -326,70 +336,6 @@ function generarTitulos() {
 }
 
 /**
- * Verifica el patrón específico
- */
-function verificarPatronEspecifico(titulos) {
-  console.log('');
-  console.log('🔍 VERIFICACIÓN DEL PATRÓN ESPECÍFICO:');
-  console.log('═══════════════════════════════════════════════');
-  console.log('');
-  
-  // DEBUG: Ver semanas especiales y disponibles
-  const year = 2027;
-  const semanasEsp = calcularSemanasEspeciales(year);
-  const totalWeeks = getTotalWeeksInYear(year);
-  const mapeo = crearMapeoSemanasDisponibles(year);
-  
-  console.log('📊 DEBUG - Año 2027:');
-  console.log('───────────────────────────────────────────────');
-  console.log(`   Total semanas del año: ${totalWeeks}`);
-  console.log(`   Semanas especiales:`, semanasEsp);
-  console.log('');
-  console.log('   Primeras 5 semanas del mapeo Serie A:');
-  for (let i = 1; i <= 5; i++) {
-    console.log(`      Virtual ${i} → Real ${mapeo[0][i]}`);
-  }
-  console.log('');
-  console.log('   Primeras 5 semanas del mapeo Serie B:');
-  for (let i = 1; i <= 5; i++) {
-    console.log(`      Virtual ${i} → Real ${mapeo[1][i]}`);
-  }
-  console.log('');
-  
-  console.log('📌 Año 2027 (semanas regulares):');
-  console.log('───────────────────────────────────────────────');
-  
-  const titulo = titulos.find(x => x.id === 'A-1-1');
-  console.log(`   A-1-1 en 2027: Semana real ${titulo.weeksByYear[2027]} (debería ser 2 según calendario)`);
-  console.log(`   A-1-1 en 2028: Semana real ${titulo.weeksByYear[2028]} (debería ser 6 según patrón)`);
-  console.log(`   A-1-1 en 2029: Semana real ${titulo.weeksByYear[2029]} (debería ser 10 según patrón)`);
-  
-  const tituloB = titulos.find(x => x.id === 'B-1-1');
-  console.log(`   B-1-1 en 2027: Semana real ${tituloB.weeksByYear[2027]} (debería ser 3 según calendario)`);
-  
-  console.log('');
-  console.log('📌 Semanas especiales 2027:');
-  console.log('───────────────────────────────────────────────');
-  
-  const verificaciones2027 = [
-    { titulo: 'A-1-1', esperado: 'SANTA' },
-    { titulo: 'B-1-1', esperado: 'PASCUA' },
-    { titulo: 'C-1-1', esperado: 'NAVIDAD' },
-    { titulo: 'D-1-1', esperado: 'FIN_ANO' }
-  ];
-  
-  verificaciones2027.forEach(({ titulo: tituloId, esperado }) => {
-    const t = titulos.find(x => x.id === tituloId);
-    const especiales = t?.specialWeeksByYear[2027] || [];
-    const tiene = especiales.length > 0 ? especiales[0].type : 'NINGUNA';
-    const emoji = tiene === esperado ? '✅' : '❌';
-    console.log(`   ${emoji} ${tituloId}: ${tiene} (esperado: ${esperado})`);
-  });
-  
-  console.log('');
-}
-
-/**
  * Cargar títulos en Firestore
  */
 async function cargarTitulos() {
@@ -400,8 +346,6 @@ async function cargarTitulos() {
     
     const titulos = generarTitulos();
     
-    // Verificar patrón antes de cargar
-    verificarPatronEspecifico(titulos);
     
     console.log('⏳ Cargando en Firestore...');
     console.log('');

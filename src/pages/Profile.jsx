@@ -309,15 +309,7 @@ export default function Profile() {
                         <span className="font-bold">{title.id}</span>
                       </div>
                       
-                      {/* NUEVO: Botón para ver calendario completo */}
-                      <button
-                        onClick={() => handleViewFullCalendar(title.id)}
-                        className="px-3 py-1.5 text-sm bg-white/50 hover:bg-white border border-gray-300 rounded-md transition-colors flex items-center gap-2"
-                        title="Ver calendario completo (74 años)"
-                      >
-                        <Calendar size={14} />
-                        <span className="hidden sm:inline">Ver Calendario</span>
-                      </button>
+                      
                     </div>
                   </div>
                 );
@@ -329,7 +321,7 @@ export default function Profile() {
           {/* Botón descargar calendario */}
           {userTitles.length > 0 && (
             <Card>
-              <h3 className="font-semibold text-gray-900 mb-3">Calendario completo</h3>
+              <h3 className="font-semibold text-gray-900 mb-3">Calendario</h3>
               <p className="text-sm text-gray-600 mb-4">
                 Descarga el calendario de todos tus títulos con información de los próximos 74 años (2027-2100)
               </p>
