@@ -1,9 +1,13 @@
-import { useState } from 'react';
 import { X, Download, Calendar as CalendarIcon } from 'lucide-react';
-import { format, addDays, startOfYear } from 'date-fns';
+import { format } from 'date-fns'; // ⚠️ Solo necesitamos format, addDays y startOfYear ya no son necesarios localmente
 import { es } from 'date-fns/locale';
 import { generarPDFTitulo } from '../../utils/PdfGenerator';
 import Button from './Button';
+import { 
+  getFechaInicioSemana, // Importar del servicio
+  getFechaFinSemana,   // Importar del servicio
+  NOMBRES_SEMANAS_ESPECIALES // Importar nombres
+} from '../../services/weekCalculationService'; // ✅ Servicio centralizado
 
 /**
  * Modal para mostrar calendario completo de un título (2027-2100)
@@ -22,65 +26,37 @@ const TitleCalendarModal = ({ isOpen, onClose, title, userName = '' }) => {
       // Semana regular
       const regularWeek = title.weeksByYear?.[year];
       if (regularWeek) {
+        const fechaInicio = getFechaInicioSemana(year, regularWeek);
+        const fechaFin = getFechaFinSemana(year, regularWeek);
+
         calendar.push({
           year,
           weekNumber: regularWeek,
           type: 'regular',
-          startDate: getWeekStartDate(year, regularWeek),
-          endDate: getWeekEndDate(year, regularWeek)
+          startDate: format(fechaInicio, 'dd/MM/yyyy', { locale: es }),
+          endDate: format(fechaFin, 'dd/MM/yyyy', { locale: es })
         });
       }
 
       // Semanas especiales
       const specialWeeks = title.specialWeeksByYear?.[year] || [];
       specialWeeks.forEach(special => {
+        const fechaInicio = getFechaInicioSemana(year, special.week);
+        const fechaFin = getFechaFinSemana(year, special.week);
+        
         calendar.push({
           year,
           weekNumber: special.week,
           type: 'special',
           specialType: special.type,
-          specialName: getSpecialWeekName(special.type),
-          startDate: getWeekStartDate(year, special.week),
-          endDate: getWeekEndDate(year, special.week)
+          specialName: NOMBRES_SEMANAS_ESPECIALES[special.type] || special.type,
+          startDate: format(fechaInicio, 'dd/MM/yyyy', { locale: es }),
+          endDate: format(fechaFin, 'dd/MM/yyyy', { locale: es })
         });
       });
     }
 
     return calendar.sort((a, b) => a.year - b.year || a.weekNumber - b.weekNumber);
-  };
-
-  const getWeekStartDate = (year, weekNumber) => {
-    const firstDayOfYear = startOfYear(new Date(year, 0, 1));
-    const daysToAdd = (weekNumber - 1) * 7;
-    const weekStart = addDays(firstDayOfYear, daysToAdd);
-    
-    const dayOfWeek = weekStart.getDay();
-    const daysUntilMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    const monday = addDays(weekStart, daysUntilMonday);
-    
-    return format(monday, 'dd/MM/yyyy', { locale: es });
-  };
-
-  const getWeekEndDate = (year, weekNumber) => {
-    const firstDayOfYear = startOfYear(new Date(year, 0, 1));
-    const daysToAdd = (weekNumber - 1) * 7 + 6;
-    const weekEnd = addDays(firstDayOfYear, daysToAdd);
-    
-    const dayOfWeek = weekEnd.getDay();
-    const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
-    const sunday = addDays(weekEnd, daysUntilSunday);
-    
-    return format(sunday, 'dd/MM/yyyy', { locale: es });
-  };
-
-  const getSpecialWeekName = (type) => {
-    const names = {
-      'NAVIDAD': 'Navidad',
-      'FIN_ANO': 'Fin de Año',
-      'SANTA': 'Semana Santa',
-      'PASCUA': 'Pascua'
-    };
-    return names[type] || type;
   };
 
   const handleDownloadPDF = () => {

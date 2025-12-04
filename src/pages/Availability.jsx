@@ -5,8 +5,13 @@ import Modal from '../components/common/Modal';
 import { Users, Search, Filter, Calendar, RefreshCw } from 'lucide-react';
 import { getAllUsers } from '../services/userService';
 import { getUserWeeksForYear } from '../services/titleService';
-import { addDays, startOfYear, format } from 'date-fns';
+import { format } from 'date-fns'; // Solo necesitamos format de date-fns
 import { es } from 'date-fns/locale';
+// ✅ IMPORTACIÓN CENTRALIZADA
+import {
+  getFechaInicioSemana,
+  getFechaFinSemana
+} from '../services/weekCalculationService';
 
 export default function Availability() {
   const { user } = useAuth();
@@ -49,35 +54,7 @@ export default function Availability() {
     }
   };
 
-  /**
-   * Calcular fecha de inicio de semana (Lunes)
-   */
-  const getWeekStartDate = (year, weekNumber) => {
-    const firstDayOfYear = startOfYear(new Date(year, 0, 1));
-    const daysToAdd = (weekNumber - 1) * 7;
-    const weekStart = addDays(firstDayOfYear, daysToAdd);
-    
-    const dayOfWeek = weekStart.getDay();
-    const daysUntilMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    const monday = addDays(weekStart, daysUntilMonday);
-    
-    return format(monday, 'dd/MM/yyyy', { locale: es });
-  };
-
-  /**
-   * Calcular fecha de fin de semana (Domingo)
-   */
-  const getWeekEndDate = (year, weekNumber) => {
-    const firstDayOfYear = startOfYear(new Date(year, 0, 1));
-    const daysToAdd = (weekNumber - 1) * 7 + 6;
-    const weekEnd = addDays(firstDayOfYear, daysToAdd);
-    
-    const dayOfWeek = weekEnd.getDay();
-    const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
-    const sunday = addDays(weekEnd, daysUntilSunday);
-    
-    return format(sunday, 'dd/MM/yyyy', { locale: es });
-  };
+  // ❌ FUNCIONES LOCALES getWeekStartDate y getWeekEndDate FUERON ELIMINADAS
 
   const handleViewDetails = async (selectedUser) => {
     setSelectedUser(selectedUser);
@@ -104,11 +81,11 @@ export default function Availability() {
         }
       }
 
-      // Agregar fechas calculadas a cada semana
+      // ✅ CORRECCIÓN: Usar funciones centralizadas y formatear el objeto Date a string
       const weeksWithDates = weeks.map(week => ({
         ...week,
-        startDate: getWeekStartDate(selectedYear, week.weekNumber),
-        endDate: getWeekEndDate(selectedYear, week.weekNumber)
+        startDate: format(getFechaInicioSemana(selectedYear, week.weekNumber), 'dd/MM/yyyy', { locale: es }),
+        endDate: format(getFechaFinSemana(selectedYear, week.weekNumber), 'dd/MM/yyyy', { locale: es })
       }));
 
       setSelectedUserWeeks(weeksWithDates);

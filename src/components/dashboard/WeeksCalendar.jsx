@@ -10,12 +10,15 @@ import {
   subMonths,
   startOfWeek,
   endOfWeek,
-  getWeek,
+  getWeek, 
   addDays,
   startOfYear
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
+// ✅ NUEVA IMPORTACIÓN: Función centralizada para obtener Date de inicio
+import { getFechaInicioSemana } from '../../services/weekCalculationService';
+
 
 /**
  * Componente de Calendario estilo Google Calendar
@@ -26,35 +29,29 @@ const WeeksCalendar = ({ userWeeks = [], currentYear }) => {
   const [selectedWeek, setSelectedWeek] = useState(null);
 
   useEffect(() => {
-    setCurrentDate(new Date(currentYear, new Date().getMonth(), 1));
+    // Usar el mes actual para la vista inicial si es el año actual, o Enero si no
+    const initialMonth = currentYear === new Date().getFullYear() ? new Date().getMonth() : 0;
+    setCurrentDate(new Date(currentYear, initialMonth, 1));
   }, [currentYear]);
 
-  // Calcular inicio de semana
-  const getWeekStartDate = (year, weekNumber) => {
-    const firstDayOfYear = startOfYear(new Date(year, 0, 1));
-    const daysToAdd = (weekNumber - 1) * 7;
-    const weekStart = addDays(firstDayOfYear, daysToAdd);
-    
-    const dayOfWeek = weekStart.getDay();
-    const daysUntilMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    const monday = addDays(weekStart, daysUntilMonday);
-    
-    return monday;
-  };
+  // ❌ ELIMINADA: La función getWeekStartDate local fue eliminada de aquí.
 
   // Obtener días del mes con padding
   const getDaysInMonth = () => {
-    const start = startOfWeek(startOfMonth(currentDate), { locale: es, weekStartsOn: 1 });
-    const end = endOfWeek(endOfMonth(currentDate), { locale: es, weekStartsOn: 1 });
+    // La semana en este componente empieza en Domingo (day 0) para el grid
+    const start = startOfWeek(startOfMonth(currentDate), { locale: es, weekStartsOn: 0 }); 
+    const end = endOfWeek(endOfMonth(currentDate), { locale: es, weekStartsOn: 0 }); 
     return eachDayOfInterval({ start, end });
   };
 
   // Verificar si un día tiene semanas del usuario
   const getWeeksForDay = (day) => {
     return userWeeks.filter(week => {
-      const weekStart = getWeekStartDate(currentYear, week.weekNumber);
+      // 💥 CORRECCIÓN CRÍTICA: Usar la función centralizada (devuelve Date)
+      const weekStart = getFechaInicioSemana(currentYear, week.weekNumber);
       const weekEnd = addDays(weekStart, 6);
       
+      // Comparación directa de objetos Date (día cae dentro del rango de la semana)
       return day >= weekStart && day <= weekEnd;
     });
   };
@@ -122,7 +119,8 @@ const WeeksCalendar = ({ userWeeks = [], currentYear }) => {
 
       {/* Días de la semana */}
       <div className="grid grid-cols-7 gap-1">
-        {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(day => (
+        {/* Usando Domingo como inicio de semana para el calendario visual */}
+        {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map(day => (
           <div
             key={day}
             className="text-center text-xs font-semibold text-gray-600 py-2"

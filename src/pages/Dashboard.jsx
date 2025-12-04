@@ -6,6 +6,12 @@ import { Calendar, Home, RefreshCw } from 'lucide-react';
 import { getTitlesByUser, getUserWeeksForYear } from '../services/titleService';
 import { addDays, startOfYear, format } from 'date-fns';
 import { es } from 'date-fns/locale';
+// ✅ NUEVA IMPORTACIÓN: Funciones centralizadas de cálculo de fechas
+import {
+  getFechaInicioSemana,
+  getFechaFinSemana
+} from '../services/weekCalculationService';
+
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -13,7 +19,7 @@ export default function Dashboard() {
   const [userWeeks, setUserWeeks] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // ✅ CORRECCIÓN 1: Usar año actual en lugar de 2027
+  // ✅ CORRECCIÓN 1: Usar año actual
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(currentYear);
 
@@ -39,7 +45,7 @@ export default function Dashboard() {
       // Cargar títulos del usuario
       const titlesData = await getTitlesByUser(user.uid);
       
-      // ✅ CORRECCIÓN 2: Enriquecer títulos con semanas bisiestas
+      // ✅ Enriquecer títulos con semanas bisiestas
       const { enrichTitleWithLeapWeeks } = await import('../services/titleLeapWeeksHelper');
       const enrichedTitles = await Promise.all(
         titlesData.map(title => enrichTitleWithLeapWeeks(title))
@@ -94,11 +100,11 @@ export default function Dashboard() {
         }
       });
       
-      // Agregar fechas calculadas
+      // ✅ CORRECCIÓN CRÍTICA: Usar funciones centralizadas y formatear
       const weeksWithDates = allWeeks.map(week => ({
         ...week,
-        startDate: getWeekStartDate(selectedYear, week.weekNumber),
-        endDate: getWeekEndDate(selectedYear, week.weekNumber)
+        startDate: format(getFechaInicioSemana(selectedYear, week.weekNumber), 'dd/MM/yyyy', { locale: es }),
+        endDate: format(getFechaFinSemana(selectedYear, week.weekNumber), 'dd/MM/yyyy', { locale: es })
       }));
       
       setUserWeeks(weeksWithDates);
@@ -111,29 +117,8 @@ export default function Dashboard() {
     }
   };
 
-  const getWeekStartDate = (year, weekNumber) => {
-    const firstDayOfYear = startOfYear(new Date(year, 0, 1));
-    const daysToAdd = (weekNumber - 1) * 7;
-    const weekStart = addDays(firstDayOfYear, daysToAdd);
-    
-    const dayOfWeek = weekStart.getDay();
-    const daysUntilMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    const monday = addDays(weekStart, daysUntilMonday);
-    
-    return format(monday, 'dd/MM/yyyy', { locale: es });
-  };
-
-  const getWeekEndDate = (year, weekNumber) => {
-    const firstDayOfYear = startOfYear(new Date(year, 0, 1));
-    const daysToAdd = (weekNumber - 1) * 7 + 6;
-    const weekEnd = addDays(firstDayOfYear, daysToAdd);
-    
-    const dayOfWeek = weekEnd.getDay();
-    const daysUntilSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
-    const sunday = addDays(weekEnd, daysUntilSunday);
-    
-    return format(sunday, 'dd/MM/yyyy', { locale: es });
-  };
+  // ❌ ELIMINADAS: getWeekStartDate y getWeekEndDate fueron eliminadas de aquí
+  // ... (código previo a línea 110)
 
   const getNextWeek = () => {
     if (!userWeeks || !Array.isArray(userWeeks) || userWeeks.length === 0) {
@@ -292,7 +277,7 @@ export default function Dashboard() {
                             )}
                             {isSpecial && !isBisiesta && (
                               <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-medium rounded-full">
-                                ⭐ VIP: {week.specialName || week.specialType}
+                                ⭐ {week.specialName || week.specialType}
                               </span>
                             )}
                           </div>
