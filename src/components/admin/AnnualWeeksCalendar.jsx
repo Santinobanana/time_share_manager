@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { X, Calendar, ChevronLeft, ChevronRight, Download } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Calendar, ChevronLeft, ChevronRight, Download, ChevronDown } from 'lucide-react';
 import { addDays, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import jsPDF from 'jspdf';
@@ -12,6 +12,13 @@ import {
   SERIE_COLORS,
   SERIE_COLORS_RGB
 } from '../../services/weekCalculationService';
+import {
+  getYearsWith53Weeks,
+  getAllWeek53Assignments,
+  assignWeek53WithExchange,
+  getWeek53Assignment,
+  cancelWeek53Assignment
+} from '../../services/week53Service';
 
 
 /**
@@ -31,13 +38,31 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
   const [selectedYear, setSelectedYear] = useState(initialYear);
   const [isDownloading, setIsDownloading] = useState(false);
   
-  
   // Nuevo estado para almacenar el conteo de semanas por serie
   const [serieWeekCounts, setSerieWeekCounts] = useState({ A: 0, B: 0, C: 0, D: 0 });
 
-  const totalWeeks = has53Weeks(selectedYear) ? 53 : 52;
-  console.log(totalWeeks) 
+  // ========== NUEVOS ESTADOS PARA SEMANA EXTRA ==========
+  const [showYearsDropdown, setShowYearsDropdown] = useState(false);
+  const [yearsWith53, setYearsWith53] = useState([]);
+  const [week53Assignments, setWeek53Assignments] = useState({});
+  
+  // Estados para Intercambio
+  const [showExchangeDropdown, setShowExchangeDropdown] = useState(false);
+  const [selectedTitleForExchange, setSelectedTitleForExchange] = useState('');
+  const [selectedWeekForExchange, setSelectedWeekForExchange] = useState('');
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  
+  // Estados para Cancelación
+  const [showCancelConfirmation, setShowCancelConfirmation] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  
+  // Refs para dropdowns
+  const yearsDropdownRef = useRef(null);
+  const exchangeDropdownRef = useRef(null);
+  // ========== FIN NUEVOS ESTADOS ==========
 
+  const totalWeeks = has53Weeks(selectedYear) ? 53 : 52;
 
   useEffect(() => {
     if (year) {
@@ -45,8 +70,25 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
     }
   }, [year]);
 
+  // ========== NUEVO: Cargar años con semana 53 y asignaciones ==========
+  useEffect(() => {
+    if (isOpen) {
+      loadWeek53Data();
+    }
+  }, [isOpen]);
 
-  
+  const loadWeek53Data = async () => {
+    try {
+      const years = getYearsWith53Weeks();
+      const assignments = await getAllWeek53Assignments();
+      setYearsWith53(years);
+      setWeek53Assignments(assignments);
+    } catch (error) {
+      console.error('Error cargando datos de semana 53:', error);
+    }
+  };
+  // ========== FIN NUEVO ==========
+
   // Ejecutar el cálculo de conteo cada vez que cambia el año o los títulos
   useEffect(() => {
     if (isOpen) {
@@ -55,10 +97,40 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
     }
   }, [selectedYear, titles, isOpen, totalWeeks]); // Incluir totalWeeks en dependencias
 
+  // ========== NUEVO: Cerrar dropdowns al hacer clic fuera ==========
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (yearsDropdownRef.current && !yearsDropdownRef.current.contains(event.target)) {
+        setShowYearsDropdown(false);
+      }
+      if (exchangeDropdownRef.current && !exchangeDropdownRef.current.contains(event.target)) {
+        setShowExchangeDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+  // ========== FIN NUEVO ==========
+
   // ✅ AHORA SÍ el return condicional
   if (!isOpen) return null;
 
   const titlesList = titles || [];
+  
+  // ✅ NUEVA VALIDACIÓN: Esperar a que titles tenga datos
+  if (titlesList.length === 0) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg p-8 max-w-md">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Cargando títulos...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
   
   const getAvailableYears = () => {
     const currentYear = new Date().getFullYear();
@@ -94,6 +166,92 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
   
   const isFirstYear = selectedYear === availableYears[0];
   const isLastYear = selectedYear === availableYears[availableYears.length - 1];
+
+  // ========== NUEVAS FUNCIONES PARA SEMANA EXTRA ==========
+  const handleYearWith53Click = (year) => {
+    setSelectedYear(year);
+    setShowYearsDropdown(false);
+  };
+
+  const getTitleWeeksInYear = (titleId) => {
+    const assignments = getWeekAssignments();
+    const weeks = [];
+    
+    for (let week = 1; week <= totalWeeks; week++) {
+      if (assignments[week].title === titleId) {
+        weeks.push(week);
+      }
+    }
+    
+    // Excluir semanas 51, 52 y 53 (especiales en años con 53 semanas)
+    return weeks.filter(w => w !== 51 && w !== 52 && w !== 53);
+  };
+
+  const handleExchangeSubmit = async () => {
+    if (!selectedTitleForExchange || !selectedWeekForExchange) {
+      alert('Por favor selecciona un título y una semana');
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      await assignWeek53WithExchange(
+        selectedYear,
+        selectedTitleForExchange,
+        selectedWeekForExchange,
+        currentUserId
+      );
+
+      // Recargar datos
+      await loadWeek53Data();
+      
+      // Limpiar formulario
+      setSelectedTitleForExchange('');
+      setSelectedWeekForExchange('');
+      setShowConfirmation(false);
+      setShowExchangeDropdown(false);
+
+      if (onSuccess) {
+        onSuccess();
+      }
+
+      alert(`Semana 51 asignada exitosamente a ${selectedTitleForExchange}`);
+    } catch (error) {
+      console.error('Error en intercambio:', error);
+      alert(`Error: ${error.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleCancelAssignment = async () => {
+    setIsCancelling(true);
+    try {
+      await cancelWeek53Assignment(selectedYear, currentUserId);
+
+      // Recargar datos
+      await loadWeek53Data();
+      
+      // Cerrar modales
+      setShowCancelConfirmation(false);
+      setShowExchangeDropdown(false);
+
+      if (onSuccess) {
+        onSuccess();
+      }
+
+      alert(`Asignación de semana extra del año ${selectedYear} cancelada exitosamente`);
+    } catch (error) {
+      console.error('Error cancelando asignación:', error);
+      alert(`Error: ${error.message}`);
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  const currentYearHas53Weeks = has53Weeks(selectedYear);
+  const currentAssignment = week53Assignments[selectedYear];
+  // ========== FIN NUEVAS FUNCIONES ==========
 
   /**
    * FUNCIÓN NUEVA: Calcula el resumen de semanas asignadas por serie.
@@ -178,9 +336,6 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
         const monthWeeks = [];
         for (let week = 1; week <= totalWeeks; week++) {
           const days = getWeekDays(week);
-          // Nota: La lógica del PDF asume que el Lunes (dayOfWeek === 1) determina el mes
-          // Si el calendario usa Domingo (0) para determinar el mes, es un error de lógica.
-          // Basado en el `AnnualWeeksCalendar.jsx` original, usa el Lunes:
           const monday = days.find(d => d.dayOfWeek === 1) || days[0];
           
           if (monday.month === monthIndex) {
@@ -317,7 +472,7 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
         }
       }
 
-      // Asignación de semanas especiales (VIP/Bisiesta)
+      // Asignación de semanas especiales (VIP/Bisiesta/Extra)
       if (title.specialWeeksByYear && title.specialWeeksByYear[selectedYear]) {
         title.specialWeeksByYear[selectedYear].forEach(special => {
           const weekNum = special.week;
@@ -326,21 +481,34 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
           if (assignments[weekNum]) {
              // La lógica aquí parece dar prioridad a la semana regular sobre la especial
              // si ya hay un título asignado.
-             if (!assignments[weekNum].title || special.type === 'BISIESTA' || special.type === 'WEEK_53') {
-                // Si no hay título, o si es una Bisiesta (que debe sobrescribir), asignar.
+             if (!assignments[weekNum].title || special.type === 'BISIESTA' || special.type === 'WEEK_53' || special.type === 'WEEK_51') {
+                // Si no hay título, o si es una Bisiesta/Extra (que debe sobrescribir), asignar.
                assignments[weekNum] = {
                  weekNumber: weekNum,
                  title: title.id,
                  serie: title.serie,
                  isSpecial: true,
                  specialType: special.type,
-                 isManual: special.type === 'WEEK_53' || special.type === 'BISIESTA'
+                 isManual: special.type === 'WEEK_53' || special.type === 'BISIESTA' || special.type === 'WEEK_51'
                };
              }
           }
         });
       }
     });
+
+    // ========== NUEVO: Agregar asignación de semana 51 si existe ==========
+    if (currentAssignment) {
+      assignments[51] = {
+        weekNumber: 51,
+        title: currentAssignment.titleId,
+        serie: currentAssignment.titleId ? currentAssignment.titleId[0] : null,
+        isSpecial: true,
+        specialType: 'WEEK_51',
+        isManual: true
+      };
+    }
+    // ========== FIN NUEVO ==========
 
     return assignments;
   };
@@ -375,7 +543,7 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
     return days;
   };
 
-const groupWeeksByMonth = () => {
+  const groupWeeksByMonth = () => {
     const assignments = getWeekAssignments();
     const monthGroups = Array(12).fill(null).map(() => []);
 
@@ -405,16 +573,15 @@ const groupWeeksByMonth = () => {
       'FIN_ANO': '🎆 Fin Año',
       'SANTA': '✝️ Santa',
       'PASCUA': '🐰 Pascua',
+      'WEEK_51': '✋ Extra',
       'WEEK_53': '✋ Manual',
-      'BISIESTA': '🎰 Rifa' // Asumo que BISIESTA es Rifa
+      'BISIESTA': '🎰 Rifa'
     };
     return labels[specialType] || '';
   };
 
   const monthGroups = groupWeeksByMonth();
 
-
-  
   // ----------------------------------------------------------------------
   // RENDERIZADO
   // ----------------------------------------------------------------------
@@ -429,7 +596,6 @@ const groupWeeksByMonth = () => {
               <h2 className="text-2xl font-bold text-gray-900">
                 Calendario de Semanas
               </h2>
-              {/* Contenido solicitado */}
               <p className="text-sm text-gray-600">
                 {totalWeeks} semanas • 
                 <span className="ml-2 font-bold text-gray-800">Semanas Asignadas:</span>
@@ -442,6 +608,157 @@ const groupWeeksByMonth = () => {
           </div>
           
           <div className="flex items-center gap-4">
+            {/* ========== NUEVO: Botón Semana Extra / Intercambiar Semana Extra ========== */}
+            {currentYearHas53Weeks ? (
+              // Botón Intercambiar (solo en años con semana 53)
+              <div className="relative" ref={exchangeDropdownRef}>
+                <button
+                  onClick={() => setShowExchangeDropdown(!showExchangeDropdown)}
+                  className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
+                >
+                  Intercambiar Semana Extra
+                  <ChevronDown size={16} />
+                </button>
+
+                {showExchangeDropdown && (
+                  <div className="absolute right-0 mt-2 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-10 p-4">
+                    <h3 className="font-semibold text-gray-900 mb-3">
+                      Intercambiar Semana 51 (Extra) del Año {selectedYear}
+                    </h3>
+
+                    {currentAssignment && (
+                      <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <p className="text-sm text-yellow-800 mb-2">
+                          <strong>Asignación actual:</strong> {currentAssignment.titleId}
+                          <br />
+                          <span className="text-xs">Semana cedida: {currentAssignment.weekExchanged}</span>
+                        </p>
+                        <button
+                          onClick={() => setShowCancelConfirmation(true)}
+                          className="w-full px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+                        >
+                          Cancelar Asignación
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Seleccionar título */}
+                    <div className="mb-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Título:
+                      </label>
+                      <select
+                        value={selectedTitleForExchange}
+                        onChange={(e) => {
+                          setSelectedTitleForExchange(e.target.value);
+                          setSelectedWeekForExchange('');
+                        }}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                      >
+                        <option value="">Seleccionar título...</option>
+                        {titlesList.map(title => (
+                          <option key={title.id} value={title.id}>
+                            {title.id} ({title.serie}{title.subserie}-{title.number})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Seleccionar semana a intercambiar */}
+                    {selectedTitleForExchange && (
+                      <div className="mb-3">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Semana a ceder:
+                        </label>
+                        <select
+                          value={selectedWeekForExchange}
+                          onChange={(e) => setSelectedWeekForExchange(Number(e.target.value))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                        >
+                          <option value="">Seleccionar semana...</option>
+                          {getTitleWeeksInYear(selectedTitleForExchange).map(week => (
+                            <option key={week} value={week}>
+                              Semana {week}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Botones de acción */}
+                    <div className="flex gap-2 mt-4">
+                      <button
+                        onClick={() => {
+                          if (selectedTitleForExchange && selectedWeekForExchange) {
+                            setShowConfirmation(true);
+                          }
+                        }}
+                        disabled={!selectedTitleForExchange || !selectedWeekForExchange || isProcessing}
+                        className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                      >
+                        {isProcessing ? 'Procesando...' : 'Confirmar'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowExchangeDropdown(false);
+                          setSelectedTitleForExchange('');
+                          setSelectedWeekForExchange('');
+                        }}
+                        className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              // Botón Semana Extra (en todos los demás años)
+              <div className="relative" ref={yearsDropdownRef}>
+                <button
+                  onClick={() => setShowYearsDropdown(!showYearsDropdown)}
+                  className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
+                >
+                  Semana Extra
+                  <ChevronDown size={16} />
+                </button>
+
+                {showYearsDropdown && (
+                  <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg max-h-96 overflow-y-auto z-10">
+                    <div className="p-2">
+                      <h3 className="font-semibold text-gray-900 mb-2 px-2">
+                        Años con Semana 53
+                      </h3>
+                      {yearsWith53.map(year => {
+                        const isAssigned = !!week53Assignments[year];
+                        return (
+                          <button
+                            key={year}
+                            onClick={() => handleYearWith53Click(year)}
+                            className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                              isAssigned
+                                ? 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                                : 'hover:bg-purple-50 text-gray-900'
+                            }`}
+                          >
+                            <div className="flex justify-between items-center">
+                              <span className="font-medium">{year}</span>
+                              {isAssigned && (
+                                <span className="text-xs bg-gray-200 px-2 py-1 rounded">
+                                  {week53Assignments[year].titleId}
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {/* ========== FIN NUEVO ========== */}
+
             {/* Botón Descargar PDF */}
             <button
               onClick={handleDownloadPDF}
@@ -610,7 +927,7 @@ const groupWeeksByMonth = () => {
               <span>Serie D</span>
             </div>
             {/* Mostrar leyenda de Semana 53 si aplica */}
-            {totalWeeks == 53 && (
+            {totalWeeks === 53 && (
               <div className="flex items-center gap-2 ml-4 border-l pl-4">
                 <span className="font-bold text-orange-600">🎰 Semana 53 </span>
               </div>
@@ -618,6 +935,102 @@ const groupWeeksByMonth = () => {
           </div>
         </div>
       </div>
+
+      {/* ========== NUEVO: Modal de confirmación ========== */}
+      {showConfirmation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">
+              Confirmar Intercambio
+            </h3>
+            <div className="space-y-3 mb-6">
+              <p className="text-sm text-gray-700">
+                <strong>Año:</strong> {selectedYear}
+              </p>
+              <p className="text-sm text-gray-700">
+                <strong>Título:</strong> {selectedTitleForExchange}
+              </p>
+              <p className="text-sm text-gray-700">
+                <strong>Semana a ceder:</strong> {selectedWeekForExchange}
+              </p>
+              <p className="text-sm text-gray-700">
+                <strong>Semana a recibir:</strong> 51 (Extra)
+              </p>
+              {currentAssignment && (
+                <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800">
+                    ⚠️ Esto reemplazará la asignación actual de la semana 51 a <strong>{currentAssignment.titleId}</strong>
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={handleExchangeSubmit}
+                disabled={isProcessing}
+                className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-300 transition-colors font-medium"
+              >
+                {isProcessing ? 'Procesando...' : 'Confirmar'}
+              </button>
+              <button
+                onClick={() => setShowConfirmation(false)}
+                disabled={isProcessing}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ========== FIN NUEVO ========== */}
+
+      {/* ========== NUEVO: Modal de confirmación de cancelación ========== */}
+      {showCancelConfirmation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">
+              Confirmar Cancelación de Asignación
+            </h3>
+            <div className="space-y-3 mb-6">
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-800 mb-2">
+                  ⚠️ Esta acción cancelará la asignación de semana extra y <strong>restaurará</strong> las semanas originales.
+                </p>
+              </div>
+              <p className="text-sm text-gray-700">
+                <strong>Año:</strong> {selectedYear}
+              </p>
+              <p className="text-sm text-gray-700">
+                <strong>Título con asignación actual:</strong> {currentAssignment?.titleId}
+              </p>
+              <p className="text-sm text-gray-700">
+                <strong>Semana cedida (se restaurará):</strong> {currentAssignment?.weekExchanged}
+              </p>
+              <p className="text-sm text-gray-700">
+                <strong>Semana 51:</strong> Quedará sin asignar
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={handleCancelAssignment}
+                disabled={isCancelling}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-300 transition-colors font-medium"
+              >
+                {isCancelling ? 'Cancelando...' : 'Confirmar Cancelación'}
+              </button>
+              <button
+                onClick={() => setShowCancelConfirmation(false)}
+                disabled={isCancelling}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-medium"
+              >
+                Volver
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ========== FIN NUEVO ========== */}
     </div>
   );
 }

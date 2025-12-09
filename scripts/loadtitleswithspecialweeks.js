@@ -5,7 +5,7 @@ import { getFirestore, doc, setDoc, connectFirestoreEmulator } from 'firebase/fi
 import { 
   generarSemanasPorAño, 
   generarArrayAnos // Mantener por si se usa fuera de generarSemanasPorAño
-} from '../src/services/weekCalculationService';
+} from '../src/services/weekCalculationService.js';
 
 // Configuración de Firebase
 const firebaseConfig = {
