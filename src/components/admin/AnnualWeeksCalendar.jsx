@@ -588,15 +588,17 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg w-full max-w-7xl max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50">
+      {/* Header */}
+      <div className="flex flex-col gap-4 p-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50">
+        {/* Fila 1: Título y botón cerrar */}
+        <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
-            <Calendar size={28} className="text-blue-600" />
+            <Calendar size={28} className="text-blue-600 flex-shrink-0" />
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">
+              <h2 className="text-xl md:text-2xl font-bold text-gray-900">
                 Calendario de Semanas
               </h2>
-              <p className="text-sm text-gray-600">
+              <p className="text-xs md:text-sm text-gray-600">
                 {totalWeeks} semanas • 
                 <span className="ml-2 font-bold text-gray-800">Semanas Asignadas:</span>
                 <span className="ml-1 text-green-600">A: {serieWeekCounts.A}</span>
@@ -607,221 +609,224 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
             </div>
           </div>
           
-          <div className="flex items-center gap-4">
-            {/* ========== NUEVO: Botón Semana Extra / Intercambiar Semana Extra ========== */}
-            {currentYearHas53Weeks ? (
-              // Botón Intercambiar (solo en años con semana 53)
-              <div className="relative" ref={exchangeDropdownRef}>
-                <button
-                  onClick={() => setShowExchangeDropdown(!showExchangeDropdown)}
-                  className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
-                >
-                  Intercambiar Semana Extra
-                  <ChevronDown size={16} />
-                </button>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 transition-colors p-2 hover:bg-gray-100 rounded-lg flex-shrink-0"
+          >
+            <X size={24} />
+          </button>
+        </div>
 
-                {showExchangeDropdown && (
-                  <div className="absolute right-0 mt-2 w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-10 p-4">
-                    <h3 className="font-semibold text-gray-900 mb-3">
-                      Intercambiar Semana 51 (Extra) del Año {selectedYear}
-                    </h3>
+        {/* Fila 2: Controles (responsive con wrap) */}
+        <div className="flex flex-wrap items-center gap-2 justify-end">
+          {/* ========== Botón Semana Extra / Intercambiar ========== */}
+          {currentYearHas53Weeks ? (
+            // Botón Intercambiar (solo en años con semana 53)
+            <div className="relative" ref={exchangeDropdownRef}>
+              <button
+                onClick={() => setShowExchangeDropdown(!showExchangeDropdown)}
+                className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-xs md:text-sm font-medium whitespace-nowrap"
+              >
+                <span className="hidden sm:inline">Intercambiar Semana Extra</span>
+                <span className="sm:hidden">Intercambiar</span>
+                <ChevronDown size={16} />
+              </button>
 
-                    {currentAssignment && (
-                      <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                        <p className="text-sm text-yellow-800 mb-2">
-                          <strong>Asignación actual:</strong> {currentAssignment.titleId}
-                          <br />
-                          <span className="text-xs">Semana cedida: {currentAssignment.weekExchanged}</span>
-                        </p>
-                        <button
-                          onClick={() => setShowCancelConfirmation(true)}
-                          className="w-full px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
-                        >
-                          Cancelar Asignación
-                        </button>
-                      </div>
-                    )}
+              {showExchangeDropdown && (
+                <div className="absolute right-0 mt-2 w-80 md:w-96 bg-white border border-gray-200 rounded-lg shadow-lg z-10 p-4">
+                  <h3 className="font-semibold text-gray-900 mb-3 text-sm md:text-base">
+                    Intercambiar Semana 51 (Extra) del Año {selectedYear}
+                  </h3>
 
-                    {/* Seleccionar título */}
+                  {currentAssignment && (
+                    <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <p className="text-xs md:text-sm text-yellow-800 mb-2">
+                        <strong>Asignación actual:</strong> {currentAssignment.titleId}
+                        <br />
+                        <span className="text-xs">Semana cedida: {currentAssignment.weekExchanged}</span>
+                      </p>
+                      <button
+                        onClick={() => setShowCancelConfirmation(true)}
+                        className="w-full px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-xs md:text-sm font-medium"
+                      >
+                        Cancelar Asignación
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Seleccionar título */}
+                  <div className="mb-3">
+                    <label className="block text-xs md:text-sm font-medium text-gray-700 mb-1">
+                      Título:
+                    </label>
+                    <select
+                      value={selectedTitleForExchange}
+                      onChange={(e) => {
+                        setSelectedTitleForExchange(e.target.value);
+                        setSelectedWeekForExchange('');
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-xs md:text-sm"
+                    >
+                      <option value="">Seleccionar título...</option>
+                      {titlesList.map(title => (
+                        <option key={title.id} value={title.id}>
+                          {title.id} ({title.serie}{title.subserie}-{title.number})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Seleccionar semana a intercambiar */}
+                  {selectedTitleForExchange && (
                     <div className="mb-3">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Título:
+                      <label className="block text-xs md:text-sm font-medium text-gray-700 mb-1">
+                        Semana a ceder:
                       </label>
                       <select
-                        value={selectedTitleForExchange}
-                        onChange={(e) => {
-                          setSelectedTitleForExchange(e.target.value);
-                          setSelectedWeekForExchange('');
-                        }}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
+                        value={selectedWeekForExchange}
+                        onChange={(e) => setSelectedWeekForExchange(Number(e.target.value))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-xs md:text-sm"
                       >
-                        <option value="">Seleccionar título...</option>
-                        {titlesList.map(title => (
-                          <option key={title.id} value={title.id}>
-                            {title.id} ({title.serie}{title.subserie}-{title.number})
+                        <option value="">Seleccionar semana...</option>
+                        {getTitleWeeksInYear(selectedTitleForExchange).map(week => (
+                          <option key={week} value={week}>
+                            Semana {week}
                           </option>
                         ))}
                       </select>
                     </div>
+                  )}
 
-                    {/* Seleccionar semana a intercambiar */}
-                    {selectedTitleForExchange && (
-                      <div className="mb-3">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Semana a ceder:
-                        </label>
-                        <select
-                          value={selectedWeekForExchange}
-                          onChange={(e) => setSelectedWeekForExchange(Number(e.target.value))}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm"
-                        >
-                          <option value="">Seleccionar semana...</option>
-                          {getTitleWeeksInYear(selectedTitleForExchange).map(week => (
-                            <option key={week} value={week}>
-                              Semana {week}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    {/* Botones de acción */}
-                    <div className="flex gap-2 mt-4">
-                      <button
-                        onClick={() => {
-                          if (selectedTitleForExchange && selectedWeekForExchange) {
-                            setShowConfirmation(true);
-                          }
-                        }}
-                        disabled={!selectedTitleForExchange || !selectedWeekForExchange || isProcessing}
-                        className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-                      >
-                        {isProcessing ? 'Procesando...' : 'Confirmar'}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setShowExchangeDropdown(false);
-                          setSelectedTitleForExchange('');
-                          setSelectedWeekForExchange('');
-                        }}
-                        className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm font-medium"
-                      >
-                        Cancelar
-                      </button>
-                    </div>
+                  {/* Botones de acción */}
+                  <div className="flex gap-2 mt-4">
+                    <button
+                      onClick={() => {
+                        if (selectedTitleForExchange && selectedWeekForExchange) {
+                          setShowConfirmation(true);
+                        }
+                      }}
+                      disabled={!selectedTitleForExchange || !selectedWeekForExchange || isProcessing}
+                      className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-xs md:text-sm font-medium"
+                    >
+                      {isProcessing ? 'Procesando...' : 'Confirmar'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowExchangeDropdown(false);
+                        setSelectedTitleForExchange('');
+                        setSelectedWeekForExchange('');
+                      }}
+                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-xs md:text-sm font-medium"
+                    >
+                      Cancelar
+                    </button>
                   </div>
-                )}
-              </div>
-            ) : (
-              // Botón Semana Extra (en todos los demás años)
-              <div className="relative" ref={yearsDropdownRef}>
-                <button
-                  onClick={() => setShowYearsDropdown(!showYearsDropdown)}
-                  className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm font-medium"
-                >
-                  Semana Extra
-                  <ChevronDown size={16} />
-                </button>
-
-                {showYearsDropdown && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg max-h-96 overflow-y-auto z-10">
-                    <div className="p-2">
-                      <h3 className="font-semibold text-gray-900 mb-2 px-2">
-                        Años con Semana 53
-                      </h3>
-                      {yearsWith53.map(year => {
-                        const isAssigned = !!week53Assignments[year];
-                        return (
-                          <button
-                            key={year}
-                            onClick={() => handleYearWith53Click(year)}
-                            className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                              isAssigned
-                                ? 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                                : 'hover:bg-purple-50 text-gray-900'
-                            }`}
-                          >
-                            <div className="flex justify-between items-center">
-                              <span className="font-medium">{year}</span>
-                              {isAssigned && (
-                                <span className="text-xs bg-gray-200 px-2 py-1 rounded">
-                                  {week53Assignments[year].titleId}
-                                </span>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-            {/* ========== FIN NUEVO ========== */}
-
-            {/* Botón Descargar PDF */}
-            <button
-              onClick={handleDownloadPDF}
-              disabled={isDownloading}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                isDownloading
-                  ? 'bg-gray-300 cursor-not-allowed'
-                  : 'bg-green-600 hover:bg-green-700 text-white'
-              }`}
-              title="Descargar PDF"
-            >
-              <Download size={20} />
-              {isDownloading ? 'Generando...' : 'Descargar PDF'}
-            </button>
-
-            {/* Selector de año */}
-            <div className="flex items-center gap-2 bg-white rounded-lg shadow-sm border border-gray-200 p-2">
-              <button
-                onClick={handlePreviousYear}
-                disabled={isFirstYear}
-                className={`p-2 rounded-lg transition-colors ${
-                  isFirstYear 
-                    ? 'text-gray-300 cursor-not-allowed' 
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
-                title="Año anterior"
-              >
-                <ChevronLeft size={20} />
-              </button>
-              
-              <select
-                value={selectedYear}
-                onChange={handleYearChange}
-                className="px-3 py-1 text-lg font-bold text-gray-900 bg-transparent border-none focus:outline-none cursor-pointer"
-              >
-                {availableYears.map(y => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </select>
-              
-              <button
-                onClick={handleNextYear}
-                disabled={isLastYear}
-                className={`p-2 rounded-lg transition-colors ${
-                  isLastYear 
-                    ? 'text-gray-300 cursor-not-allowed' 
-                    : 'text-gray-700 hover:bg-gray-100'
-                }`}
-                title="Año siguiente"
-              >
-                <ChevronRight size={20} />
-              </button>
+                </div>
+              )}
             </div>
+          ) : (
+            // Botón Semana Extra (en todos los demás años)
+            <div className="relative" ref={yearsDropdownRef}>
+              <button
+                onClick={() => setShowYearsDropdown(!showYearsDropdown)}
+                className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-xs md:text-sm font-medium whitespace-nowrap"
+              >
+                <span className="hidden sm:inline">Semana Extra</span>
+                <span className="sm:hidden">Extra</span>
+                <ChevronDown size={16} />
+              </button>
+
+              {showYearsDropdown && (
+                <div className="absolute right-0 mt-2 w-56 md:w-64 bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 md:max-h-96 overflow-y-auto z-10">
+                  <div className="p-2">
+                    <h3 className="font-semibold text-gray-900 mb-2 px-2 text-xs md:text-sm">
+                      Años con Semana 53
+                    </h3>
+                    {yearsWith53.map(year => {
+                      const isAssigned = !!week53Assignments[year];
+                      return (
+                        <button
+                          key={year}
+                          onClick={() => handleYearWith53Click(year)}
+                          className={`w-full text-left px-3 py-2 rounded-lg transition-colors text-xs md:text-sm ${
+                            isAssigned
+                              ? 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                              : 'hover:bg-purple-50 text-gray-900'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="font-medium">{year}</span>
+                            {isAssigned && (
+                              <span className="text-xs bg-gray-200 px-2 py-1 rounded">
+                                {week53Assignments[year].titleId}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Botón Descargar PDF */}
+          <button
+            onClick={handleDownloadPDF}
+            disabled={isDownloading}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors text-xs md:text-sm font-medium whitespace-nowrap ${
+              isDownloading
+                ? 'bg-gray-300 cursor-not-allowed'
+                : 'bg-green-600 hover:bg-green-700 text-white'
+            }`}
+            title="Descargar PDF"
+          >
+            <Download size={18} />
+            <span className="hidden sm:inline">{isDownloading ? 'Generando...' : 'Descargar PDF'}</span>
+            <span className="sm:hidden">{isDownloading ? '...' : 'PDF'}</span>
+          </button>
+
+          {/* Selector de año */}
+          <div className="flex items-center gap-1 md:gap-2 bg-white rounded-lg shadow-sm border border-gray-200 p-1 md:p-2">
+            <button
+              onClick={handlePreviousYear}
+              disabled={isFirstYear}
+              className={`p-1.5 md:p-2 rounded-lg transition-colors ${
+                isFirstYear 
+                  ? 'text-gray-300 cursor-not-allowed' 
+                  : 'text-gray-700 hover:bg-gray-100'
+              }`}
+              title="Año anterior"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            
+            <select
+              value={selectedYear}
+              onChange={handleYearChange}
+              className="px-2 md:px-3 py-1 text-base md:text-lg font-bold text-gray-900 bg-transparent border-none focus:outline-none cursor-pointer"
+            >
+              {availableYears.map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
             
             <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors p-2 hover:bg-gray-100 rounded-lg"
+              onClick={handleNextYear}
+              disabled={isLastYear}
+              className={`p-1.5 md:p-2 rounded-lg transition-colors ${
+                isLastYear 
+                  ? 'text-gray-300 cursor-not-allowed' 
+                  : 'text-gray-700 hover:bg-gray-100'
+              }`}
+              title="Año siguiente"
             >
-              <X size={24} />
+              <ChevronRight size={18} />
             </button>
           </div>
         </div>
-
+      </div>
         {/* Contenido - Grid de meses */}
         <div className="flex-1 overflow-y-auto p-6" id="calendar-content">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">

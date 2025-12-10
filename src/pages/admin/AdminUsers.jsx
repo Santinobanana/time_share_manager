@@ -354,68 +354,69 @@ export default function AdminUsers() {
                 key={user.uid}
                 className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
-                      <h3 className="text-lg font-semibold text-gray-900">
-                        {user.name}
-                      </h3>
-                      {getStatusBadge(user)}
-                      {user.isAdmin && (
-                        <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                          Admin
-                        </span>
-                      )}
-                    </div>
+                {/* Header con nombre y badges */}
+                <div className="flex items-center gap-3 mb-2 flex-wrap">
+                  <h3 className="text-lg font-semibold text-gray-900">
+                    {user.name}
+                  </h3>
+                  {getStatusBadge(user)}
+                  {user.isAdmin && (
+                    <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                      Admin
+                    </span>
+                  )}
+                </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600 mb-3">
-                      <div className="flex items-center gap-2">
-                        <Mail size={14} />
-                        {user.email}
-                      </div>
-                      {user.phone && (
-                        <div className="flex items-center gap-2">
-                          <Phone size={14} />
-                          {user.phone}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Títulos */}
-                    {user.titles && user.titles.length > 0 && (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Home size={14} className="text-gray-400" />
-                        {user.titles.map((title) => (
-                          <span
-                            key={title}
-                            className={`${getSerieColor(title)} px-3 py-1 rounded-full text-sm font-medium`}
-                          >
-                            {title}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                {/* Información de contacto */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600 mb-3">
+                  <div className="flex items-center gap-2">
+                    <Mail size={14} />
+                    {user.email}
                   </div>
+                  {user.phone && (
+                    <div className="flex items-center gap-2">
+                      <Phone size={14} />
+                      {user.phone}
+                    </div>
+                  )}
+                </div>
 
-                  {/* Acciones */}
-                  <div className="flex gap-2 ml-4">
+                {/* Títulos */}
+                {user.titles && user.titles.length > 0 && (
+                  <div className="flex items-center gap-2 flex-wrap mb-3">
+                    <Home size={14} className="text-gray-400 flex-shrink-0" />
+                    {user.titles.map((title) => (
+                      <span
+                        key={title}
+                        className={`${getSerieColor(title)} px-3 py-1 rounded-full text-sm font-medium`}
+                      >
+                        {title}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Botones de acción - AHORA ABAJO Y DENTRO */}
+                <div className="flex gap-2 flex-wrap pt-3 border-t border-gray-100">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleViewDetails(user)}
+                    className="flex-1 min-w-[120px]"
+                  >
+                    Ver detalles
+                  </Button>
+                  {!user.isAdmin && (
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleViewDetails(user)}
+                      onClick={() => handleEditUser(user)}
+                      className="flex items-center justify-center gap-2"
                     >
-                      Ver detalles
+                      <Edit size={14} />
+                      <span className="hidden sm:inline">Editar</span>
                     </Button>
-                    {!user.isAdmin && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleEditUser(user)}
-                      >
-                        <Edit size={14} />
-                      </Button>
-                    )}
-                  </div>
+                  )}
                 </div>
               </div>
             ))}
