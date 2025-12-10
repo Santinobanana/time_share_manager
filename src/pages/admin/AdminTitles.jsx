@@ -41,7 +41,9 @@ export default function AdminTitles() {
   const [filterStatus, setFilterStatus] = useState('all');
   
   // ✅ CORRECCIÓN: Inicializar con año actual en lugar de null
-  const currentYear = new Date().getFullYear();
+  const BASE_YEAR = 2027; // Año desde el cual tenemos datos
+  const currentRealYear = new Date().getFullYear();
+  const currentYear = currentRealYear >= BASE_YEAR ? currentRealYear : BASE_YEAR;
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedTitle, setSelectedTitle] = useState(null);

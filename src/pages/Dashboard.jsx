@@ -20,7 +20,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   
   // ✅ CORRECCIÓN 1: Usar año actual
-  const currentYear = new Date().getFullYear();
+  const BASE_YEAR = 2027; // Año desde el cual tenemos datos
+  const currentRealYear = new Date().getFullYear();
+  const currentYear = currentRealYear >= BASE_YEAR ? currentRealYear : BASE_YEAR;
   const [selectedYear, setSelectedYear] = useState(currentYear);
 
   // ✅ Generar años dinámicamente desde año actual
