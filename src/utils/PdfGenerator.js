@@ -17,49 +17,37 @@ import {
  * Genera datos de calendario para un título en un rango de años
  * EXTENDIDO HASTA 2100
  */
-const generarDatosCalendario = (title, startYear = 2027, endYear = startYear+48) => {
+const generarDatosCalendario = (title, startYear, endYear) => {
   const datos = [];
-
   for (let year = startYear; year <= endYear; year++) {
     const semanasEspeciales = getSemanasEspecialesDelAno(year);
-    
-    // Semana regular
     const semanaRegular = title.weeksByYear?.[year];
+    
     if (semanaRegular) {
       const tipoEspecial = semanasEspeciales[semanaRegular];
-      const fechaInicio = getFechaInicioSemana(year, semanaRegular);
-      const fechaFin = getFechaFinSemana(year, semanaRegular);
-
       datos.push({
         year,
         tipoSemana: tipoEspecial ? NOMBRES_SEMANAS_ESPECIALES[tipoEspecial] : 'Regular',
-        fecha: `${format(fechaInicio, 'dd/MM', { locale: es })} - ${format(fechaFin, 'dd/MM/yyyy', { locale: es })}`,
+        fecha: `${format(getFechaInicioSemana(year, semanaRegular), 'dd/MM')} - ${format(getFechaFinSemana(year, semanaRegular), 'dd/MM/yy')}`,
         esEspecial: !!tipoEspecial,
         esBisiesta: false
       });
     }
 
-    // Semanas especiales adicionales
     if (title.specialWeeksByYear?.[year]) {
       title.specialWeeksByYear[year].forEach(specialWeek => {
-        const fechaInicio = getFechaInicioSemana(year, specialWeek.week);
-        const fechaFin = getFechaFinSemana(year, specialWeek.week);
-
-        // Detectar si es semana bisiesta (tipo BISIESTA)
         const esBisiesta = specialWeek.type === 'BISIESTA';
-
         datos.push({
           year,
           tipoSemana: esBisiesta ? 'Rifa' : NOMBRES_SEMANAS_ESPECIALES[specialWeek.type],
-          fecha: `${format(fechaInicio, 'dd/MM', { locale: es })} - ${format(fechaFin, 'dd/MM/yyyy', { locale: es })}`,
-          esEspecial: !esBisiesta, // VIP son especiales (naranja)
-          esBisiesta: esBisiesta   // Rifas son bisiestas (morado)
+          fecha: `${format(getFechaInicioSemana(year, specialWeek.week), 'dd/MM')} - ${format(getFechaFinSemana(year, specialWeek.week), 'dd/MM/yy')}`,
+          esEspecial: !esBisiesta,
+          esBisiesta: esBisiesta
         });
       });
     }
   }
-
-  return datos.sort((a, b) => a.year - b.year);
+  return datos;
 };
 
 /**
@@ -83,131 +71,44 @@ const dividirEnPartes = (array, numPartes) => {
  * CON 4 COLUMNAS COMPACTAS
  * HASTA EL AÑO 2100
  */
-export const generarPDFTitulo = (title, userName = '') => {
-  const doc = new jsPDF({
-    orientation: 'landscape', // 🔄 Horizontal para más espacio
-    unit: 'mm',
-    format: 'letter'
-  });
-
+export const generarPDFTitulo = (title, userName = '', startYear = 2027) => {
+  const endYear = startYear + 47; // Ciclo de 48 años
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'letter' });
   const pageWidth = doc.internal.pageSize.width;
-  const pageHeight = doc.internal.pageSize.height;
-  const margin = 8; // Márgenes más pequeños
+  const margin = 8;
   const usableWidth = pageWidth - (margin * 2);
 
-  // Título del documento (más compacto)
-  doc.setFontSize(14);
-  doc.setFont(undefined, 'bold');
+  doc.setFontSize(14).setFont(undefined, 'bold');
   doc.text(`Calendario Título ${title.id}`, pageWidth / 2, 10, { align: 'center' });
+  doc.setFontSize(8).setFont(undefined, 'normal');
+  doc.text(`Serie: ${title.serie} | Rango: ${startYear} - ${endYear} (48 años)`, pageWidth / 2, 16, { align: 'center' });
 
-  // Información del título (más compacta)
-  doc.setFontSize(8);
-  doc.setFont(undefined, 'normal');
-  doc.text(
-    `Serie: ${title.serie} | Subserie: ${title.subserie} | Número: ${title.number}`,
-    pageWidth / 2,
-    15,
-    { align: 'center' }
-  );
-  
-  if (userName) {
-    doc.text(`Propietario: ${userName}`, pageWidth / 2, 19, { align: 'center' });
-  }
+  const datosTotales = generarDatosCalendario(title, startYear, endYear);
+  const anchoColumna = (usableWidth - 9) / 4;
+  const posicionesX = [margin, margin + anchoColumna + 3, margin + (anchoColumna + 3) * 2, margin + (anchoColumna + 3) * 3];
 
-  doc.setFontSize(7);
-  doc.text('Calendario 2027 - 2100 (74 años)', pageWidth / 2, 23, { align: 'center' });
-
-  // Línea separadora
-  doc.setDrawColor(200);
-  doc.line(margin, 25, pageWidth - margin, 25);
-
-  // Generar datos (2027-2100 = 74 años)
-  const datos = generarDatosCalendario(title);
-
-  // Dividir en 4 COLUMNAS para que quepa en 1 página
-  const columnas = dividirEnPartes(datos, 4);
-  
-  // Ancho de cada columna (con espacio entre ellas)
-  const espacioEntreColumnas = 3;
-  const anchoColumna = (usableWidth - (espacioEntreColumnas * 3)) / 4;
-  
-  // Posiciones X de cada columna
-  const posicionesX = [
-    margin,
-    margin + anchoColumna + espacioEntreColumnas,
-    margin + (anchoColumna + espacioEntreColumnas) * 2,
-    margin + (anchoColumna + espacioEntreColumnas) * 3
-  ];
-  
-  const yInicio = 28;
-
-  // Generar cada columna
-  columnas.forEach((datosColumna, indexColumna) => {
-    if (datosColumna.length === 0) return;
-
-    const tableData = datosColumna.map(d => [
-      d.year.toString(),
-      d.tipoSemana,
-      d.fecha
-    ]);
+  // Dividir en 4 bloques de 12 años (para obtener las 13 fechas por columna)
+  for (let i = 0; i < 4; i++) {
+    const añoInicioCol = startYear + (i * 12);
+    const añoFinCol = añoInicioCol + 11;
+    const datosColumna = datosTotales.filter(d => d.year >= añoInicioCol && d.year <= añoFinCol);
 
     doc.autoTable({
-      startY: yInicio,
-      margin: { left: posicionesX[indexColumna], right: 0 },
+      startY: 25,
+      margin: { left: posicionesX[i] },
       tableWidth: anchoColumna,
       head: [['Año', 'Tipo', 'Fecha']],
-      body: tableData,
+      body: datosColumna.map(d => [d.year, d.tipoSemana, d.fecha]),
       theme: 'striped',
-      headStyles: {
-        fillColor: [66, 66, 66],
-        textColor: 255,
-        fontStyle: 'bold',
-        fontSize: 7,
-        halign: 'center',
-        cellPadding: 1.5
-      },
-      alternateRowStyles: {
-        fillColor: [248, 248, 248]
-      },
-      bodyStyles: {
-        fontSize: 6.5,
-        cellPadding: 1.2,
-        lineColor: [230, 230, 230],
-        lineWidth: 0.1
-      },
-      columnStyles: {
-        0: { halign: 'center', cellWidth: anchoColumna * 0.20 },  // Año
-        1: { halign: 'left', cellWidth: anchoColumna * 0.35 },    // Tipo
-        2: { halign: 'left', cellWidth: anchoColumna * 0.45 }     // Fecha
-      },
+      headStyles: { fillColor: [66, 66, 66], fontSize: 7, halign: 'center' },
+      bodyStyles: { fontSize: 6.5, cellPadding: 1.2 },
       didParseCell: function(data) {
         const rowData = datosColumna[data.row.index];
-        
-        // Colorear semanas especiales (VIP) en naranja
-        if (rowData && rowData.esEspecial && data.column.index === 1) {
-          data.cell.styles.textColor = [255, 140, 0];
-          data.cell.styles.fontStyle = 'bold';
-        }
-        
-        // Colorear semanas bisiestas (Rifa) en morado
-        if (rowData && rowData.esBisiesta && data.column.index === 1) {
-          data.cell.styles.textColor = [156, 39, 176];
-          data.cell.styles.fontStyle = 'bold';
-        }
+        if (rowData?.esEspecial && data.column.index === 1) data.cell.styles.textColor = [255, 140, 0];
+        if (rowData?.esBisiesta && data.column.index === 1) data.cell.styles.textColor = [156, 39, 176];
       }
     });
-  });
-
-  // Footer
-  doc.setFontSize(6);
-  doc.setTextColor(150);
-  doc.text(
-    `Generado el ${format(new Date(), 'dd/MM/yyyy HH:mm', { locale: es })}`,
-    pageWidth / 2,
-    pageHeight - 4,
-    { align: 'center' }
-  );
-
+  }
   return doc;
 };
 

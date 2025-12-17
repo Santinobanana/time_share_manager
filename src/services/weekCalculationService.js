@@ -57,29 +57,24 @@ export const calcularPascua = (year) => {
  */
 export const obtenerNumeroSemana = (date) => {
   const year = date.getFullYear();
-  const firstDayOfYear = startOfYear(date);
-  let primerDomingo = firstDayOfYear;
-  const diaSemana = getDay(firstDayOfYear); // 0 = Domingo, 6 = Sábado
-
-  // Mueve la fecha al primer Domingo del año
+  
+  // Encontrar el primer domingo del año
+  let primerDomingo = new Date(year, 0, 1);
+  const diaSemana = primerDomingo.getDay();
+  
+  // Si el 1 de enero no es domingo, avanzar al siguiente domingo
   if (diaSemana !== 0) {
-    primerDomingo = addDays(primerDomingo, (7 - diaSemana));
+    primerDomingo.setDate(primerDomingo.getDate() + (7 - diaSemana));
   }
   
-  // Si la fecha es antes del primer Domingo, es la semana 1
-  if (date < primerDomingo) {
-    return 1;
-  }
-
-  // Calcular diferencia en días desde el primer Domingo
-  const diffTime = date.getTime() - primerDomingo.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  // Calcular días transcurridos desde el primer domingo
+  const diasDesdeInicio = Math.floor((date - primerDomingo) / (1000 * 60 * 60 * 24));
   
-  // Número de semana = 1 + (días transcurridos / 7)
-  const weekNo = Math.floor(diffDays / 7) + 1;
+  // Calcular número de semana (empezando desde 1)
+  const numeroSemana = Math.floor(diasDesdeInicio / 7) + 1;
   
-  return weekNo;
-};
+  return numeroSemana;
+}
 
 /**
  * Calcula el total de semanas del año (52 o 53)
@@ -416,40 +411,36 @@ export const calcularSemanaRegular = (serie, subserie, numero, año) => {
  * @returns {string|null} ID del título si le corresponde, null si no
  */
 export const calcularTituloSemanEspecial = (serie, subserie, numero, tipoSemana, año) => {
-  const añosTranscurridos = año - ANO_BASE;
+  const añoBase = 2027;
+  const añosTranscurridos = año - añoBase;
   
   // 1. Determinar qué título está activo este año (ciclo de 12)
   const añosIndex = añosTranscurridos % 12;
   const assignedSubserie = (añosIndex % 3) + 1;
   const assignedNumero = Math.floor(añosIndex / 3) + 1;
   
-  const assignedTitleId = `${serie}-${assignedSubserie}-${assignedNumero}`;
   const currentTitleId = `${serie}-${subserie}-${numero}`;
+  const assignedTitleId = `${serie}-${assignedSubserie}-${assignedNumero}`;
 
-  // Si este título no está activo este año, retornar null
+  // Si este título no es el elegido de la serie para este año, no tiene VIP
   if (currentTitleId !== assignedTitleId) {
     return null;
   }
 
-  // 2. Determinar qué VIP le corresponde a esta serie este año
-  const offsetSerie = OFFSET_POR_SERIE[serie];
-
-  // Buscar qué VIP tiene esta serie este año
-  // Fórmula: (indiceVIP - añosTranscurridos + 4) % 4 = offsetSerie
-  for (let i = 0; i < 4; i++) {
-    const serieQueLeCorresponde = (i - añosTranscurridos + 4) % 4;
-    
-    if (serieQueLeCorresponde === offsetSerie) {
-      const assignedWeekType = VIP_ORDER[i];
-      
-      // Verificar si coincide con la semana solicitada
-      if (tipoSemana === assignedWeekType) {
-        return currentTitleId;
-      }
-    }
-  }
+  // 2. Determinar qué tipo de semana VIP le toca a este título hoy
+  const OFFSET_POR_SERIE = { 'A': 2, 'B': 3, 'C': 0, 'D': 1 };
+  const SPECIAL_WEEKS_ORDER = ['NAVIDAD', 'FIN_ANO', 'SANTA', 'PASCUA'];
   
-  return null;
+  const offsetInicial = OFFSET_POR_SERIE[serie];
+  const ciclosCompletos = Math.floor(añosTranscurridos / 12);
+  const semanaOffset = ciclosCompletos % 4;
+  const baseIndex = añosTranscurridos % 4;
+  
+  const realIndex = (offsetInicial + baseIndex + semanaOffset) % 4;
+  const assignedWeekType = SPECIAL_WEEKS_ORDER[realIndex];
+
+  // 3. Verificar si la semana calculada es la que se está consultando
+  return tipoSemana === assignedWeekType ? currentTitleId : null;
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

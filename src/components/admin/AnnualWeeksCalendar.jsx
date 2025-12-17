@@ -4,19 +4,21 @@ import { addDays, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import {
+  getFechaInicioSemana,
   obtenerNumeroSemana,
   calcularSemanasEspeciales,
   getTotalWeeksInYear,
   has53Weeks,
+  generarSemanasPorAño,
   crearMapeoSemanasDisponibles,
   SERIE_COLORS,
-  SERIE_COLORS_RGB
+  SERIE_COLORS_RGB,
+  NOMBRES_SEMANAS_ESPECIALES
 } from '../../services/weekCalculationService';
 import {
   getYearsWith53Weeks,
   getAllWeek53Assignments,
   assignWeek53WithExchange,
-  getWeek53Assignment,
   cancelWeek53Assignment
 } from '../../services/week53Service';
 
@@ -174,17 +176,14 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
   };
 
   const getTitleWeeksInYear = (titleId) => {
-    const assignments = getWeekAssignments();
-    const weeks = [];
+    // Separamos el ID (ej: "A-1-1") para obtener serie, subserie y número
+    const [serie, subserie, numero] = titleId.split('-');
     
-    for (let week = 1; week <= totalWeeks; week++) {
-      if (assignments[week].title === titleId) {
-        weeks.push(week);
-      }
-    }
-    
-    // Excluir semanas 51, 52 y 53 (especiales en años con 53 semanas)
-    return weeks.filter(w => w !== 51 && w !== 52 && w !== 53);
+    // ✅ Usamos la función centralizada que ya sabe rotar semanas
+    const { weeksByYear } = generarSemanasPorAño(serie, parseInt(subserie), parseInt(numero), selectedYear, selectedYear);
+    const weekNum = weeksByYear[selectedYear];    
+    // Retornamos un array con la semana asignada (excluyendo VIPs si es necesario)
+    return weekNum ? [weekNum] : [];
   };
 
   const handleExchangeSubmit = async () => {
@@ -285,6 +284,7 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
       
       // Título del documento
       pdf.setFontSize(18);
+      pdf.setTextColor(0, 0, 0);
       pdf.setFont('helvetica', 'bold');
       pdf.text(`Calendario de Semanas ${selectedYear}`, pageWidth / 2, margin + 5, { align: 'center' });
       
@@ -292,7 +292,8 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
       const countSummary = `Semanas asignadas: A: ${serieWeekCounts.A} | B: ${serieWeekCounts.B} | C: ${serieWeekCounts.C} | D: ${serieWeekCounts.D}`;
 
       pdf.setFontSize(10);
-      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(0, 0, 0);
+      pdf.setFont('helvetica', 'bold');
       //pdf.text(`${totalWeeks} semanas • ${countSummary}`, pageWidth / 2, margin + 12, { align: 'center' });
       
       // Calcular dimensiones del grid (3 columnas x 4 filas para 12 meses)
@@ -329,6 +330,7 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
         pdf.setFillColor(240, 240, 240);
         pdf.rect(startX, startY, cellWidth - 2, 8, 'F');
         pdf.setFontSize(10);
+        pdf.setTextColor(0, 0, 0);
         pdf.setFont('helvetica', 'bold');
         pdf.text(monthName, startX + (cellWidth - 2) / 2, startY + 5.5, { align: 'center' });
         
@@ -338,7 +340,14 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
           const days = getWeekDays(week);
           const monday = days.find(d => d.dayOfWeek === 1) || days[0];
           
-          if (monday.month === monthIndex) {
+          let monthIndexForWeek = monday.month;
+          
+          // ✅ CORRECCIÓN CRÍTICA: Evitar que la semana 53 se vaya a Enero en el PDF
+          if (week >= 52 && monthIndexForWeek === 0) {
+            monthIndexForWeek = 11; // Forzar a Diciembre
+          }
+          
+          if (monthIndexForWeek === monthIndex) {
             monthWeeks.push({
               ...assignments[week],
               days: days,
@@ -355,6 +364,7 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
         pdf.rect(startX, headerY, cellWidth - 2, 5, 'F');
         
         pdf.setFontSize(7);
+        pdf.setTextColor(0, 0, 0);
         pdf.setFont('helvetica', 'bold');
         
         // Headers
@@ -376,7 +386,8 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
           }
           
           pdf.setFontSize(6);
-          pdf.setFont('helvetica', 'normal');
+          pdf.setTextColor(0, 0, 0);
+          pdf.setFont('helvetica', 'bold');
           pdf.setTextColor(0, 0, 0);
           
           // Número de semana
@@ -405,6 +416,22 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
           });
           
           weekY += rowHeight;
+
+          const specialWeeksInMonth = monthWeeks.filter((w, index, self) => 
+              w.isSpecial && self.findIndex(t => t.specialType === w.specialType) === index
+            );
+          if (specialWeeksInMonth.length > 0) {
+            pdf.setFontSize(5);
+            pdf.setFont('helvetica', 'bold');
+            pdf.setTextColor(180, 80, 0); // Color naranja/marrón para el PDF
+            
+            let subLegendY = weekY + 2;
+            specialWeeksInMonth.forEach((sw) => {
+              const label = getSpecialLabel(sw.specialType).replace(/[^a-zA-Z0-9 ]/g, ''); // Limpiar emojis si fallan
+              pdf.text(`* S${sw.weekNumber} ${label}: ${sw.title}`, startX + 1, subLegendY);
+              subLegendY += 2;
+            });
+          }
         });
         
         // Borde del mes
@@ -415,7 +442,8 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
       // Leyenda en la última página
       const legendY = pageHeight - margin;
       pdf.setFontSize(8);
-      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(0, 0, 0);
+      pdf.setFont('helvetica', 'bold');
       pdf.setTextColor(0, 0, 0);
       
       let legendX = margin;
@@ -514,32 +542,19 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
   };
 
   const getWeekDays = (weekNumber) => {
-    // Esta lógica de fechas es la misma que la de AdminTitles/PdfGenerator (Domingo-Sábado)
-    const firstDayOfYear = new Date(selectedYear, 0, 1);
-    const firstDayWeekday = firstDayOfYear.getDay();
-    
-    let firstSunday;
-    if (firstDayWeekday === 0) {
-      firstSunday = new Date(selectedYear, 0, 1);
-    } else {
-      const daysUntilSunday = 7 - firstDayWeekday;
-      firstSunday = new Date(selectedYear, 0, 1 + daysUntilSunday);
-    }
-    
-    const weeksFromFirst = weekNumber - 1;
-    const sundayOfWeek = addDays(firstSunday, weeksFromFirst * 7);
+    // ✅ Usamos la fuente de verdad centralizada
+    const startDate = getFechaInicioSemana(selectedYear, weekNumber);
     
     const days = [];
     for (let i = 0; i < 7; i++) {
-      const day = addDays(sundayOfWeek, i);
+      const day = addDays(startDate, i);
       days.push({
         date: day,
         day: format(day, 'd'),
         month: day.getMonth(),
-        dayOfWeek: day.getDay() // 0=Domingo, 6=Sábado
+        dayOfWeek: day.getDay() 
       });
     }
-    
     return days;
   };
 
