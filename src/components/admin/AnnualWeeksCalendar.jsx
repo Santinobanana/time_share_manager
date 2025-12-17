@@ -293,7 +293,7 @@ export default function AnnualWeeksCalendar({ isOpen, onClose, year, titles, onS
 
       pdf.setFontSize(10);
       pdf.setFont('helvetica', 'normal');
-      pdf.text(`${totalWeeks} semanas • ${countSummary}`, pageWidth / 2, margin + 12, { align: 'center' });
+      //pdf.text(`${totalWeeks} semanas • ${countSummary}`, pageWidth / 2, margin + 12, { align: 'center' });
       
       // Calcular dimensiones del grid (3 columnas x 4 filas para 12 meses)
       const cols = 3;

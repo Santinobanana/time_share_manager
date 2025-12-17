@@ -32,7 +32,7 @@ export default function Navbar({ user, isAdmin, onLogout }) {
         <div className="flex justify-between h-16">
           <div className="flex items-center">
             <Link to="/dashboard" className="text-white text-lg sm:text-xl font-bold">
-              Nombre por definir
+             Retanofractional
             </Link>
           </div>
           

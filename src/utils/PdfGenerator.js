@@ -17,7 +17,7 @@ import {
  * Genera datos de calendario para un título en un rango de años
  * EXTENDIDO HASTA 2100
  */
-const generarDatosCalendario = (title, startYear = 2027, endYear = 2100) => {
+const generarDatosCalendario = (title, startYear = 2027, endYear = startYear+48) => {
   const datos = [];
 
   for (let year = startYear; year <= endYear; year++) {

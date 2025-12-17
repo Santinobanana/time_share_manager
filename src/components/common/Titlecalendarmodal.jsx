@@ -97,9 +97,7 @@ const TitleCalendarModal = ({ isOpen, onClose, title, userName = '' }) => {
               <h2 className="text-2xl font-bold">
                 Calendario Completo - Título {title.id}
               </h2>
-              <p className="text-gray-200 text-sm mt-1">
-                Vista de 74 años (2027 - 2100)
-              </p>
+
             </div>
           </div>
           <button

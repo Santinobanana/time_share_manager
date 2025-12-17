@@ -22,7 +22,7 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 // Conectar a emulador
-connectFirestoreEmulator(db, 'localhost', 8090);
+//connectFirestoreEmulator(db, 'localhost', 8090);
 
 // ❌ CÓDIGO ELIMINADO: Todas las funciones locales de cálculo de fechas (calcularPascua, obtenerNumeroSemana, calcularSemanasEspeciales, etc.)
 // fueron eliminadas ya que están en weekCalculationService.js.
