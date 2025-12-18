@@ -6,7 +6,8 @@ import {
   query, 
   where, 
   updateDoc,
-  orderBy 
+  orderBy, 
+  arrayUnion
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { 
@@ -107,15 +108,22 @@ export const getTitleOwner = async (titleId) => {
  */
 export const assignTitleToUser = async (titleId, userId) => {
   try {
+    // 1. Actualizar el Título para que tenga al dueño
     const titleRef = doc(db, 'titles', titleId);
     await updateDoc(titleRef, {
       ownerId: userId
     });
+
+    // 2. Asegurar que el Usuario tenga el título en su array (por si acaso)
+    const userRef = doc(db, 'users', userId);
+    await updateDoc(userRef, {
+      titles: arrayUnion(titleId)
+    });
     
-    console.log(`Título ${titleId} asignado a usuario ${userId}`);
+    return true;
   } catch (error) {
-    console.error('Error asignando título:', error);
-    throw new Error('Error al asignar el título');
+    console.error("Error en assignTitleToUser:", error);
+    throw error;
   }
 };
 

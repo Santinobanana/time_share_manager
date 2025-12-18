@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import Input from '../common/Input';
 import Button from '../common/Button';
 import Card from '../common/Card';
+import { getAllTitles } from '../../services/titleService';
 
 export default function Register() {
+  const [availableTitles, setAvailableTitles] = useState([]); // Estado para títulos reales
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     name: '',
@@ -22,21 +24,19 @@ export default function Register() {
   const { register } = useAuth();
   const navigate = useNavigate();
 
-  // Simulación de títulos disponibles
-  const availableTitles = [
-    'A-1-1', 'A-1-2', 'A-1-3', 'A-1-4',
-    'A-2-1', 'A-2-2', 'A-2-3', 'A-2-4',
-    'A-3-1', 'A-3-2', 'A-3-3', 'A-3-4',
-    'B-1-1', 'B-1-2', 'B-1-3', 'B-1-4',
-    'B-2-1', 'B-2-2', 'B-2-3', 'B-2-4',
-    'B-3-1', 'B-3-2', 'B-3-3', 'B-3-4',
-    'C-1-1', 'C-1-2', 'C-1-3', 'C-1-4',
-    'C-2-1', 'C-2-2', 'C-2-3', 'C-2-4',
-    'C-3-1', 'C-3-2', 'C-3-3', 'C-3-4',
-    'D-1-1', 'D-1-2', 'D-1-3', 'D-1-4',
-    'D-2-1', 'D-2-2', 'D-2-3', 'D-2-4',
-    'D-3-1', 'D-3-2', 'D-3-3', 'D-3-4'
-  ];
+  useEffect(() => {
+    const fetchTitles = async () => {
+      try {
+        const allTitles = await getAllTitles();
+        // Filtrar solo los que no tienen dueño
+        const available = allTitles.filter(t => !t.ownerId);
+        setAvailableTitles(available);
+      } catch (error) {
+        console.error("Error cargando títulos:", error);
+      }
+    };
+    fetchTitles();
+  }, []);
 
   const handleChange = (e) => {
     setFormData({
@@ -45,13 +45,19 @@ export default function Register() {
     });
   };
 
-  const handleTitleToggle = (title) => {
-    setFormData({
-      ...formData,
-      titles: formData.titles.includes(title)
-        ? formData.titles.filter(t => t !== title)
-        : [...formData.titles, title]
-    });
+  const handleTitleSelection = (titleId) => {
+    const isSelected = formData.titles.includes(titleId);
+    if (isSelected) {
+      setFormData({
+        ...formData,
+        titles: formData.titles.filter(id => id !== titleId)
+      });
+    } else {
+      setFormData({
+        ...formData,
+        titles: [...formData.titles, titleId]
+      });
+    }
   };
 
   const handleNext = () => {
@@ -197,31 +203,21 @@ export default function Register() {
                   Selecciona los títulos que te corresponden. El administrador revisará tu solicitud.
                 </p>
                 
-                <div className="grid grid-cols-4 gap-2 max-h-64 overflow-y-auto p-2 border border-gray-200 rounded-lg">
-                  {availableTitles.map((title) => {
-                    const serie = title.charAt(0);
-                    const colorClass = {
-                      'A': 'bg-serie-a hover:bg-green-400',
-                      'B': 'bg-serie-b hover:bg-blue-400',
-                      'C': 'bg-serie-c hover:bg-yellow-400',
-                      'D': 'bg-serie-d hover:bg-purple-400'
-                    }[serie];
-                    
-                    return (
-                      <button
-                        key={title}
-                        type="button"
-                        onClick={() => handleTitleToggle(title)}
-                        className={`p-3 rounded-lg text-sm font-medium transition-all ${
-                          formData.titles.includes(title)
-                            ? `${colorClass} ring-2 ring-gray-700`
-                            : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                        }`}
-                      >
-                        {title}
-                      </button>
-                    );
-                  })}
+                <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto border p-2 rounded">
+                {availableTitles.map(title => (
+                  <button
+                    key={title.id}
+                    type="button"
+                    onClick={() => handleTitleSelection(title.id)}
+                    className={`p-2 text-sm rounded border transition-colors ${
+                      formData.titles.includes(title.id)
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {title.id}
+                  </button>
+                ))}
                 </div>
                 
                 {formData.titles.length > 0 && (

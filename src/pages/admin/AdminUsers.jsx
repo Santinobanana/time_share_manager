@@ -144,16 +144,28 @@ export default function AdminUsers() {
     setShowEditModal(true);
   };
 
-  const handleApproveUser = async (userId) => {
+  const handleApproveUser = async (userToApprove) => {
     try {
       setSubmitting(true);
-      await approveUser(userId);
-      alert('Usuario aprobado exitosamente');
+
+      // 1. Aprobar y activar al usuario
+      await updateUser(userToApprove.uid, { 
+        isApproved: true, 
+        isActive: true 
+      });
+
+      // 2. VINCULACIÓN BIDIRECCIONAL REAL
+      // Usamos la función de userService que actualiza al usuario Y a los títulos
+      if (userToApprove.titles && userToApprove.titles.length > 0) {
+        await assignTitlesToUser(userToApprove.uid, userToApprove.titles);
+      }
+      
+      alert('Usuario aprobado y títulos vinculados correctamente');
+      await loadData(); // Recargar para ver cambios
       setShowDetailsModal(false);
-      await loadData();
     } catch (error) {
-      console.error('Error aprobando usuario:', error);
-      alert('Error al aprobar usuario: ' + error.message);
+      console.error('Error al aprobar:', error);
+      alert('Error: ' + error.message);
     } finally {
       setSubmitting(false);
     }
@@ -477,7 +489,7 @@ export default function AdminUsers() {
               {!selectedUser.isApproved ? (
                 <>
                   <Button
-                    onClick={() => handleApproveUser(selectedUser.uid)}
+                    onClick={() => handleApproveUser(selectedUser)}
                     disabled={submitting}
                     className="flex-1 flex items-center justify-center gap-2"
                   >
