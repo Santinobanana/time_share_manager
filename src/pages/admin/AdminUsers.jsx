@@ -11,7 +11,8 @@ import {
   updateUser,
   assignTitlesToUser,
   removeTitlesFromUser,
-  getUserStats
+  getUserStats,
+  getUserById
 } from '../../services/userService';
 import { getAvailableTitles } from '../../services/titleService';
 import { 
@@ -144,28 +145,27 @@ export default function AdminUsers() {
     setShowEditModal(true);
   };
 
-  const handleApproveUser = async (userToApprove) => {
+  const handleApproveUser = async (userId) => {
     try {
       setSubmitting(true);
-
-      // 1. Aprobar y activar al usuario
-      await updateUser(userToApprove.uid, { 
-        isApproved: true, 
-        isActive: true 
-      });
-
-      // 2. VINCULACIÓN BIDIRECCIONAL REAL
-      // Usamos la función de userService que actualiza al usuario Y a los títulos
-      if (userToApprove.titles && userToApprove.titles.length > 0) {
-        await assignTitlesToUser(userToApprove.uid, userToApprove.titles);
+      
+      // 1. Obtener el usuario para ver qué títulos solicitó
+      const user = await getUserById(userId);
+      
+      // 2. Aprobar el usuario (actualiza isApproved e isActive)
+      await approveUser(userId);
+      
+      // 3. Asignar los títulos en la colección titles
+      if (user.titles && user.titles.length > 0) {
+        await assignTitlesToUser(userId, user.titles);
       }
       
-      alert('Usuario aprobado y títulos vinculados correctamente');
-      await loadData(); // Recargar para ver cambios
+      alert('Usuario aprobado exitosamente');
       setShowDetailsModal(false);
+      await loadData();
     } catch (error) {
-      console.error('Error al aprobar:', error);
-      alert('Error: ' + error.message);
+      console.error('Error aprobando usuario:', error);
+      alert('Error al aprobar usuario: ' + error.message);
     } finally {
       setSubmitting(false);
     }
@@ -489,7 +489,7 @@ export default function AdminUsers() {
               {!selectedUser.isApproved ? (
                 <>
                   <Button
-                    onClick={() => handleApproveUser(selectedUser)}
+                    onClick={() => handleApproveUser(selectedUser.uid)}
                     disabled={submitting}
                     className="flex-1 flex items-center justify-center gap-2"
                   >
