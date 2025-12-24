@@ -9,7 +9,6 @@ import TitleCalendarModal from '../components/common/Titlecalendarmodal';
 import { getTitleById } from '../services/titleService';
 import { User, Mail, Phone, Key, Calendar, Home, Edit, Save, X, FileDown } from 'lucide-react';
 import { updateUser } from '../services/userService';
-import { getTitlesByUser } from '../services/titleService';
 import { updatePassword } from 'firebase/auth';
 import { auth } from '../config/firebase';
 
@@ -38,16 +37,29 @@ export default function Profile() {
     }
   }, [user]);
 
+  // ✅ FIX: Cargar títulos COMPLETOS con weeksByYear y specialWeeksByYear
   const loadUserTitles = async () => {
     try {
       if (!user.titles || user.titles.length === 0) {
         setUserTitles([]);
         return;
       }
-      const titles = await getTitlesByUser(user.uid);
-      setUserTitles(titles);
+      
+      // 1. Cargar títulos completos desde Firestore
+      const titlesPromises = user.titles.map(titleId => getTitleById(titleId));
+      const titles = await Promise.all(titlesPromises);
+      
+      // 2. Enriquecer cada título con semanas bisiestas
+      const { enrichTitleWithLeapWeeks } = await import('../services/titleLeapWeeksHelper');
+      const enrichedTitles = await Promise.all(
+        titles.map(title => enrichTitleWithLeapWeeks(title))
+      );
+      
+      console.log('Títulos cargados y enriquecidos:', enrichedTitles); // Debug
+      setUserTitles(enrichedTitles);
     } catch (error) {
       console.error('Error cargando títulos:', error);
+      setUserTitles([]);
     }
   };
 

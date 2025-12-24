@@ -572,3 +572,76 @@ export const checkDuplicateExchange = async (fromUserId, toUserId, fromWeek, toW
     return false;
   }
 };
+
+export const calculateTimeRemaining = (createdAt) => {
+  try {
+    const EXPIRATION_DAYS = 3;
+    const createdDate = createdAt?.toDate ? createdAt.toDate() : new Date(createdAt?.seconds * 1000);
+    const expirationDate = new Date(createdDate);
+    expirationDate.setDate(expirationDate.getDate() + EXPIRATION_DAYS);
+    
+    const now = new Date();
+    const diffMs = expirationDate - now;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const totalHours = Math.ceil(diffMs / (1000 * 60 * 60));
+    
+    return {
+      days: diffDays,
+      hours: diffHours,
+      totalHours,
+      totalMs: diffMs,
+      isExpired: diffMs <= 0,
+      expirationDate
+    };
+  } catch (error) {
+    console.error('Error calculando tiempo restante:', error);
+    return { days: 0, hours: 0, totalHours: 0, totalMs: 0, isExpired: true, expirationDate: new Date() };
+  }
+};
+
+/**
+ * NUEVO: Verificar y rechazar automáticamente intercambios expirados
+ */
+export const checkAndRejectExpiredExchanges = async (userId) => {
+  try {
+    // Obtener intercambios pendientes recibidos por el usuario
+    const q = query(
+      collection(db, 'exchanges'),
+      where('toUserId', '==', userId),
+      where('status', '==', 'pending')
+    );
+
+    const snapshot = await getDocs(q);
+    const expiredExchanges = [];
+
+    snapshot.forEach(doc => {
+      const exchange = { id: doc.id, ...doc.data() };
+      const timeRemaining = calculateTimeRemaining(exchange.createdAt);
+      
+      if (timeRemaining.isExpired) {
+        expiredExchanges.push(exchange);
+      }
+    });
+
+    // Rechazar automáticamente los expirados
+    const rejectionPromises = expiredExchanges.map(async (exchange) => {
+      try {
+        await rejectExchange(exchange.id, true); // true = expiración automática
+        console.log(`✅ Intercambio ${exchange.id} rechazado por expiración`);
+      } catch (error) {
+        console.error(`❌ Error rechazando intercambio ${exchange.id}:`, error);
+      }
+    });
+
+    await Promise.all(rejectionPromises);
+
+    return {
+      total: expiredExchanges.length,
+      rejected: expiredExchanges.length
+    };
+  } catch (error) {
+    console.error('Error verificando intercambios expirados:', error);
+    return { total: 0, rejected: 0 };
+  }
+};

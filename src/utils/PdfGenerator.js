@@ -132,180 +132,55 @@ export const generarYDescargarPDFTitulo = (title, userName = '') => {
  * Genera PDF con calendario de múltiples títulos
  * Cada título en su propia página horizontal con 4 columnas
  */
-export const generarPDFMultiplesTitulos = (titles, userName = '') => {
-  const doc = new jsPDF({
-    orientation: 'landscape',
-    unit: 'mm',
-    format: 'letter'
-  });
-
+export const generarPDFMultiplesTitulos = (titles, userName = '', startYear = 2027) => {
+  const endYear = startYear + 47;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'letter' });
   const pageWidth = doc.internal.pageSize.width;
-  const pageHeight = doc.internal.pageSize.height;
-  const margin = 12;
+  const margin = 8;
 
-  // Primera página - portada
-  doc.setFontSize(20);
-  doc.setFont(undefined, 'bold');
-  doc.text('Calendario de Títulos', pageWidth / 2, 40, { align: 'center' });
+  // Portada
+  doc.setFontSize(22).setFont(undefined, 'bold');
+  doc.text('CALENDARIO DE SEMANAS', pageWidth / 2, 60, { align: 'center' });
+  doc.setFontSize(16).setFont(undefined, 'normal');
+  doc.text(`Propietario: ${userName}`, pageWidth / 2, 75, { align: 'center' });
+  doc.setFontSize(12);
+  doc.text(`Periodo de 48 años: ${startYear} - ${endYear}`, pageWidth / 2, 85, { align: 'center' });
 
-  if (userName) {
-    doc.setFontSize(14);
-    doc.setFont(undefined, 'normal');
-    doc.text(`Propietario: ${userName}`, pageWidth / 2, 55, { align: 'center' });
-  }
-
-  doc.setFontSize(11);
-  doc.text(`Total de títulos: ${titles.length}`, pageWidth / 2, 70, { align: 'center' });
-  doc.text('Calendario 2027 - 2100 (74 años)', pageWidth / 2, 78, { align: 'center' });
-
-  // Lista de títulos en la portada
-  doc.setFontSize(10);
-  doc.setFont(undefined, 'bold');
-  doc.text('Títulos incluidos:', pageWidth / 2, 95, { align: 'center' });
-  
-  doc.setFont(undefined, 'normal');
-  doc.setFontSize(9);
-  
-  let yPos = 105;
-  const titulosPorColumna = Math.ceil(titles.length / 3);
-  
-  titles.forEach((title, index) => {
-    const serieColor = {
-      'A': [139, 195, 74],
-      'B': [33, 150, 243],
-      'C': [255, 152, 0],
-      'D': [156, 39, 176]
-    }[title.serie] || [128, 128, 128];
-    
-    doc.setTextColor(...serieColor);
-    
-    // Dividir en tres columnas
-    const columna = Math.floor(index / titulosPorColumna);
-    const xPos = margin + 20 + (columna * 80);
-    const yPosReal = yPos + ((index % titulosPorColumna) * 6);
-    
-    doc.text(`• ${title.id}`, xPos, yPosReal);
-  });
-
-  // Generar página para cada título (usando la función optimizada)
-  titles.forEach((title, index) => {
+  titles.forEach((title) => {
     doc.addPage();
-    
-    const espacioEntreColumnas = 3;
     const usableWidth = pageWidth - (margin * 2);
-    const anchoColumna = (usableWidth - (espacioEntreColumnas * 3)) / 4;
-    
-    // Header del título
-    doc.setFontSize(14);
-    doc.setFont(undefined, 'bold');
-    doc.setTextColor(66, 66, 66);
-    doc.text(`Título ${title.id}`, pageWidth / 2, 10, { align: 'center' });
-    
-    doc.setFontSize(8);
-    doc.setFont(undefined, 'normal');
-    doc.text(
-      `Serie: ${title.serie} | Subserie: ${title.subserie} | Número: ${title.number}`,
-      pageWidth / 2,
-      15,
-      { align: 'center' }
-    );
-    
-    doc.setFontSize(7);
-    doc.text('Calendario 2027 - 2100 (74 años)', pageWidth / 2, 19, { align: 'center' });
-    
-    doc.setDrawColor(200);
-    doc.line(margin, 21, pageWidth - margin, 21);
+    const anchoColumna = (usableWidth - 9) / 4;
+    const posicionesX = [margin, margin + anchoColumna + 3, margin + (anchoColumna + 3) * 2, margin + (anchoColumna + 3) * 3];
 
-    // Generar datos y dividir en 4 columnas
-    const datos = generarDatosCalendario(title);
-    const columnas = dividirEnPartes(datos, 4);
-    
-    const posicionesX = [
-      margin,
-      margin + anchoColumna + espacioEntreColumnas,
-      margin + (anchoColumna + espacioEntreColumnas) * 2,
-      margin + (anchoColumna + espacioEntreColumnas) * 3
-    ];
-    
-    const yInicio = 24;
+    doc.setFontSize(14).setFont(undefined, 'bold');
+    doc.text(`Título: ${title.id}`, pageWidth / 2, 10, { align: 'center' });
+    doc.setFontSize(8).setFont(undefined, 'normal');
+    doc.text(`Serie: ${title.serie} | Rango: ${startYear} - ${endYear}`, pageWidth / 2, 16, { align: 'center' });
 
-    // Generar tablas en columnas
-    columnas.forEach((datosColumna, indexColumna) => {
-      if (datosColumna.length === 0) return;
+    const datosTotales = generarDatosCalendario(title, startYear, endYear);
 
-      const tableData = datosColumna.map(d => [
-        d.year.toString(),
-        d.tipoSemana,
-        d.fecha
-      ]);
+    for (let i = 0; i < 4; i++) {
+      const añoInicioCol = startYear + (i * 12);
+      const añoFinCol = añoInicioCol + 11;
+      const datosColumna = datosTotales.filter(d => d.year >= añoInicioCol && d.year <= añoFinCol);
 
       doc.autoTable({
-        startY: yInicio,
-        margin: { left: posicionesX[indexColumna], right: 0 },
+        startY: 25,
+        margin: { left: posicionesX[i] },
         tableWidth: anchoColumna,
         head: [['Año', 'Tipo', 'Fecha']],
-        body: tableData,
+        body: datosColumna.map(d => [d.year, d.tipoSemana, d.fecha]),
         theme: 'striped',
-        headStyles: {
-          fillColor: [66, 66, 66],
-          textColor: 255,
-          fontStyle: 'bold',
-          fontSize: 7,
-          halign: 'center',
-          cellPadding: 1.5
-        },
-        alternateRowStyles: {
-          fillColor: [248, 248, 248]
-        },
-        bodyStyles: {
-          fontSize: 6.5,
-          cellPadding: 1.2,
-          lineColor: [230, 230, 230],
-          lineWidth: 0.1
-        },
-        columnStyles: {
-          0: { halign: 'center', cellWidth: anchoColumna * 0.20 },
-          1: { halign: 'left', cellWidth: anchoColumna * 0.35 },
-          2: { halign: 'left', cellWidth: anchoColumna * 0.45 }
-        },
+        headStyles: { fillColor: [66, 66, 66], fontSize: 7, halign: 'center' },
+        bodyStyles: { fontSize: 6.5, cellPadding: 1.2 },
         didParseCell: function(data) {
           const rowData = datosColumna[data.row.index];
-          
-          if (rowData && rowData.esEspecial && data.column.index === 1) {
-            data.cell.styles.textColor = [255, 140, 0];
-            data.cell.styles.fontStyle = 'bold';
-          }
-          
-          if (rowData && rowData.esBisiesta && data.column.index === 1) {
-            data.cell.styles.textColor = [156, 39, 176];
-            data.cell.styles.fontStyle = 'bold';
-          }
+          if (rowData?.esEspecial && data.column.index === 1) data.cell.styles.textColor = [255, 140, 0];
+          if (rowData?.esBisiesta && data.column.index === 1) data.cell.styles.textColor = [156, 39, 176];
         }
       });
-    });
+    }
   });
-
-  // Footer en todas las páginas
-  const pageCount = doc.internal.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i);
-    doc.setFontSize(6);
-    doc.setTextColor(150);
-    
-    doc.text(
-      `Página ${i} de ${pageCount}`,
-      pageWidth / 2,
-      pageHeight - 8,
-      { align: 'center' }
-    );
-    
-    doc.text(
-      `Generado el ${format(new Date(), 'dd/MM/yyyy HH:mm', { locale: es })}`,
-      pageWidth / 2,
-      pageHeight - 4,
-      { align: 'center' }
-    );
-  }
 
   return doc;
 };

@@ -232,10 +232,8 @@ export const getTitleWeeksForYear = async (titleId, year) => {
 };
 
 /**
- * ACTUALIZADO: Obtener semanas de un usuario para un año
- * Ahora considera intercambios activos
- * 
- * FIX: Cambiado forEach por for...of para poder usar await
+ * CORREGIDO: Obtener semanas de un usuario para un año
+ * Ahora considera intercambios activos correctamente
  */
 export const getUserWeeksForYear = async (userId, year) => {
   try {
@@ -302,12 +300,11 @@ export const getUserWeeksForYear = async (userId, year) => {
     });
     
     // 3. Aplicar intercambios activos
-    // 🔧 FIX: Cambiado de forEach a for...of para poder usar await
     for (const exchange of activeExchanges) {
       if (exchange.fromUserId === userId) {
-        // Este usuario dio una semana y recibió otra
+        // 🔧 CORRECCIÓN: Este usuario DIO una semana (fromWeek) y RECIBIÓ otra (toWeek)
         
-        // Remover la semana que dio
+        // Remover la semana que DIO (fromWeek)
         const indexToRemove = regularWeeks.findIndex(
           w => w.titleId === exchange.fromWeek.titleId && 
                w.weekNumber === exchange.fromWeek.weekNumber
@@ -316,14 +313,15 @@ export const getUserWeeksForYear = async (userId, year) => {
           regularWeeks.splice(indexToRemove, 1);
         }
         
-        // Agregar la semana que recibió
-        const titleData = titles.find(t => t.id === exchange.toWeek.titleId);
-        if (titleData) {
+        // Agregar la semana que RECIBIÓ (toWeek) ✅ CORREGIDO
+        const toTitleDoc = await getDoc(doc(db, 'titles', exchange.toWeek.titleId));
+        if (toTitleDoc.exists()) {
+          const toTitleData = toTitleDoc.data();
           regularWeeks.push({
             titleId: exchange.toWeek.titleId,
-            serie: titleData.serie,
-            subserie: titleData.subserie,
-            number: titleData.number,
+            serie: toTitleData.serie,
+            subserie: toTitleData.subserie,
+            number: toTitleData.number,
             weekNumber: exchange.toWeek.weekNumber,
             type: 'regular',
             isExchanged: true,
@@ -331,9 +329,9 @@ export const getUserWeeksForYear = async (userId, year) => {
           });
         }
       } else if (exchange.toUserId === userId) {
-        // Este usuario recibió una semana y dio otra
+        // 🔧 CORRECCIÓN: Este usuario RECIBIÓ una semana (fromWeek) y DIO otra (toWeek)
         
-        // Remover la semana que dio
+        // Remover la semana que DIO (toWeek)
         const indexToRemove = regularWeeks.findIndex(
           w => w.titleId === exchange.toWeek.titleId && 
                w.weekNumber === exchange.toWeek.weekNumber
@@ -342,8 +340,7 @@ export const getUserWeeksForYear = async (userId, year) => {
           regularWeeks.splice(indexToRemove, 1);
         }
         
-        // Agregar la semana que recibió
-        // 🔧 FIX: Ahora el await funciona porque estamos en for...of
+        // Agregar la semana que RECIBIÓ (fromWeek) ✅ CORREGIDO
         const fromTitleDoc = await getDoc(doc(db, 'titles', exchange.fromWeek.titleId));
         if (fromTitleDoc.exists()) {
           const fromTitleData = fromTitleDoc.data();

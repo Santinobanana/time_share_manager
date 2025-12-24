@@ -15,7 +15,8 @@ import {
   RefreshCw,
   MessageSquare,
   AlertCircle,
-  Shield
+  Shield,
+  Timer // NUEVO: Icono para contador
 } from 'lucide-react';
 import {
   getUserExchanges,
@@ -26,8 +27,10 @@ import {
   cancelExchange,
   getExchangeStats,
   checkDuplicateExchange,
-  getAllExchangesForAdmin, // NUEVA FUNCIÓN
-  getGlobalExchangeStats // NUEVA FUNCIÓN
+  getAllExchangesForAdmin,
+  getGlobalExchangeStats,
+  calculateTimeRemaining, // NUEVO
+  checkAndRejectExpiredExchanges // NUEVO
 } from '../services/exchangeService';
 import { getUserWeeksForYear } from '../services/titleService';
 import { getAllUsers } from '../services/userService';
@@ -38,9 +41,9 @@ export default function Exchanges() {
   const [error, setError] = useState(null);
   const [sentExchanges, setSentExchanges] = useState([]);
   const [receivedExchanges, setReceivedExchanges] = useState([]);
-  const [allExchanges, setAllExchanges] = useState([]); // NUEVO: Para vista de admin
+  const [allExchanges, setAllExchanges] = useState([]);
   const [stats, setStats] = useState(null);
-  const [activeTab, setActiveTab] = useState('received'); // received, sent, history, admin-all
+  const [activeTab, setActiveTab] = useState('received');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedExchange, setSelectedExchange] = useState(null);
@@ -65,10 +68,34 @@ export default function Exchanges() {
     }
   }, [user]);
 
+  // NUEVO: Actualizar contadores cada minuto
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Forzar re-render para actualizar contadores
+      setReceivedExchanges(prev => [...prev]);
+      setSentExchanges(prev => [...prev]);
+      setAllExchanges(prev => [...prev]);
+    }, 60000); // Cada 60 segundos
+
+    return () => clearInterval(interval);
+  }, []);
+
   const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
+      
+      // NUEVO: Verificar y rechazar intercambios expirados antes de cargar
+      if (!user.isAdmin) {
+        try {
+          const expiredResult = await checkAndRejectExpiredExchanges(user.uid);
+          if (expiredResult.rejected > 0) {
+            console.log(`✅ ${expiredResult.rejected} intercambio(s) expirado(s) fueron rechazados automáticamente`);
+          }
+        } catch (expError) {
+          console.error('Error verificando intercambios expirados:', expError);
+        }
+      }
       
       // Si es administrador, cargar TODO
       if (user.isAdmin) {
@@ -311,6 +338,37 @@ export default function Exchanges() {
     );
   };
 
+  // NUEVO: Componente para mostrar contador regresivo
+  const TimeRemainingBadge = ({ createdAt }) => {
+    const timeRemaining = calculateTimeRemaining(createdAt);
+    
+    if (timeRemaining.isExpired) {
+      return (
+        <div className="flex items-center gap-1 text-xs text-red-600 font-medium">
+          <AlertCircle size={14} />
+          <span>Expirado</span>
+        </div>
+      );
+    }
+
+    const getColor = () => {
+      if (timeRemaining.totalHours <= 12) return 'text-red-600';
+      if (timeRemaining.totalHours <= 24) return 'text-orange-600';
+      return 'text-gray-600';
+    };
+
+    const timeText = timeRemaining.days > 0 
+      ? `${timeRemaining.days}d ${timeRemaining.hours}h`
+      : `${timeRemaining.hours}h`;
+
+    return (
+      <div className={`flex items-center gap-1 text-xs ${getColor()} font-medium`}>
+        <Timer size={14} />
+        <span>{timeText} restantes</span>
+      </div>
+    );
+  };
+
   // Determinar qué intercambios mostrar según el tab activo
   const displayExchanges = user.isAdmin && activeTab === 'admin-all' 
     ? allExchanges 
@@ -343,6 +401,11 @@ export default function Exchanges() {
           </h1>
           <p className="text-gray-600 mt-1">
             {user.isAdmin ? 'Vista de administrador - Todos los intercambios del sistema' : 'Gestiona tus solicitudes de intercambio'}
+          </p>
+          {/* NUEVO: Advertencia de expiración */}
+          <p className="text-sm text-orange-600 mt-2 flex items-center gap-1">
+            <AlertCircle size={16} />
+            Las solicitudes expiran en 3 días
           </p>
         </div>
         <Button onClick={() => setShowCreateModal(true)}>
@@ -434,11 +497,15 @@ export default function Exchanges() {
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-2">
+                    <div className="flex items-center gap-3 mb-2 flex-wrap">
                       {getStatusBadge(exchange.status)}
                       <span className="text-sm text-gray-500">
                         {new Date(exchange.createdAt?.seconds * 1000).toLocaleDateString()}
                       </span>
+                      {/* NUEVO: Mostrar contador solo si está pendiente */}
+                      {exchange.status === 'pending' && (
+                        <TimeRemainingBadge createdAt={exchange.createdAt} />
+                      )}
                     </div>
 
                     {/* MOSTRAR USUARIOS EN VISTA DE ADMIN */}
@@ -536,6 +603,14 @@ export default function Exchanges() {
         title="Nueva Solicitud de Intercambio"
       >
         <div className="space-y-4">
+          {/* NUEVO: Advertencia de expiración */}
+          <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 flex items-start gap-2">
+            <AlertCircle size={18} className="text-orange-600 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-orange-800">
+              El destinatario tendrá <strong>3 días</strong> para responder. Después de ese tiempo, la solicitud se rechazará automáticamente.
+            </p>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Selecciona el usuario
@@ -626,7 +701,7 @@ export default function Exchanges() {
         </div>
       </Modal>
 
-      {/* Modal de detalles - agregar botones de admin si es necesario */}
+      {/* Modal de detalles */}
       <Modal
         isOpen={showDetailsModal}
         onClose={() => {
@@ -637,11 +712,15 @@ export default function Exchanges() {
       >
         {selectedExchange && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               {getStatusBadge(selectedExchange.status)}
               <span className="text-sm text-gray-500">
                 {new Date(selectedExchange.createdAt?.seconds * 1000).toLocaleString()}
               </span>
+              {/* NUEVO: Mostrar contador en modal */}
+              {selectedExchange.status === 'pending' && (
+                <TimeRemainingBadge createdAt={selectedExchange.createdAt} />
+              )}
             </div>
 
             {/* Información de usuarios (solo en vista admin) */}
